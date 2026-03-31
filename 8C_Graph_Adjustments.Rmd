@@ -1,0 +1,931 @@
+---
+title: "Graphs for conference poster"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+Library read-in
+```{r}
+library(plyr)
+library(dplyr)
+library(tidyverse)
+library(readr)
+library(grid)
+library(stats)
+library(svglite)
+library(readxl)
+```
+
+
+To order the metabolites in terms of type, rather than alphabetically, we need to load in the metabolite data dicitionary and pull out the column of names, then save it as a vector.
+
+```{r}
+metdict <- read_excel("Copy of metabolome_data_dictionary_march2016.xlsx")
+vec <- metdict$`Variable Name`
+metgroup <- c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L")
+xminval <- c(0, 98, 168, 171, 180, 189, 192, 208, 213, 222, 225, 227)
+xmaxval <- c(98, 168, 171, 180, 189, 192, 208, 213, 222, 225, 227, 228)
+```
+
+
+# GAM 2, visit 5, indiv visits
+
+```{r}
+sb_z_v5_long <- sb_z_v5 %>% 
+  pivot_longer(fifth_pctile:real_pvalue, names_to="type", values_to="value") 
+
+sb_z_v5_filt <- sb_z_v5 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v5_filt_long <- sb_z_v5_filt %>% 
+  pivot_longer(fifth_pctile:real_pvalue, names_to="type", values_to="value") 
+
+
+# CREATE A PLOTTING FUNCITON COS REDOING AND RERUNING ALL OF THIS CODE 36 TIMES IS ABSOLUTE BULLSHIT
+
+
+test <- sb_z_v5_long %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=0, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=0, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=0, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=0, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=0, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=0, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=0, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=0, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=0, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=0, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=0, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=0, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_point() + 
+  geom_line() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=14),
+        axis.title.y = element_text(size=14),
+        plot.title = element_text(size=14),
+        aspect.ratio=7/16) + 
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data (visit 5, GAM2).",
+       x = "Metabolite Name",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=sb_z_v5_filt_long[which(sb_z_v5_filt_long$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#c77cff")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = zv5b_sig$name, y = zv5b_sig$value_pvalue - 0.03, label = rownames(zv5b_sig), size = 3.5)
+ggsave(file="test.svg", plot=test, height=7, width=15)
+
+
+
+# TESTING FUNCTION
+
+sim_real_indiv_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for metabolite abundance \nat individual visits.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#c77cff")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+
+testpng <- sim_real_indiv_plot(sb_z_v5_long, sb_z_v5_filt_long, zv5b_sig)
+ggsave(file="testpng.png", plot=testpng, height=7, width=15)
+```
+
+# GAM 2, RoC btwn visit 1 and 5
+
+```{r}
+
+
+sb_z_v15_long <- sb_z_v15 %>% 
+  pivot_longer(fifth_pctile:real_pvalue, names_to="type", values_to="value") 
+
+sb_z_v15_filt <- sb_z_v15 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v15_filt_long <- sb_z_v15_filt %>% 
+  pivot_longer(fifth_pctile:real_pvalue, names_to="type", values_to="value") 
+
+metgroup <- c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L")
+xminval <- c(0, 98, 168, 171, 180, 189, 192, 208, 213, 222, 225, 227)
+xmaxval <- c(98, 168, 171, 180, 189, 192, 208, 213, 222, 225, 227, 228)
+
+
+test1 <- sb_z_v15_long %>% mutate(name=factor(as.character(name),levels=unique(name))) %>% 
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(size=14), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change in metabolite abundance.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.5) +
+  geom_point(data=sb_z_v15_filt_long[which(sb_z_v15_filt_long$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#c77cff")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = zv15b_sig$name, y = zv15b_sig$value_pvalue - 0.03, label = rownames(zv15b_sig), size = 5)
+ggsave(file="test1.svg", plot=test1, height=7, width=15)
+
+## TESTING FUNCTION ##
+
+sim_real_roc_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type))  +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=14), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change \nin metabolite abundance.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#c77cff")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+
+testrocpng <- sim_real_roc_plot(sb_z_v15_long, sb_z_v15_filt_long, zv15b_sig)
+ggsave(file="testrocpng.png", plot=testrocpng, height=7, width=15)
+
+```
+
+The following code creates functions for the same graphs as above, but including data for fdr values.
+
+# GAM1
+
+## INDIV
+
+### NONFDR
+
+```{r}
+sim_GAM1_indiv_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for metabolite abundance \nat individual visits.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#c77cff")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+###FDR
+
+```{r}
+srfdr_GAM1_indiv_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for metabolite abundance \nat individual visit, and their respective FDR calculated values.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,9), guide=guide_legend(override.aes = list(colour=c("#ff61cc")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+## ROC
+
+### NONFDR
+
+```{r}
+sim_GAM1_roc_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type))  +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=14), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change \nin metabolite abundance.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#c77cff")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+
+### FDR
+
+```{r}
+srfdr_GAM1_roc_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change \nin metabolite abundance, and their respective FDR calculated values.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,9), guide=guide_legend(override.aes = list(colour=c("#ff61cc")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+
+# GAM2
+
+## INDIV
+
+### NONFDR
+
+```{r}
+sim_GAM2_indiv_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for metabolite abundance \nat individual visits.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#f564e3")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+###FDR
+
+```{r}
+srfdr_GAM2_indiv_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for metabolite abundance \nat individual visit, and their respective FDR calculated values.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,9), guide=guide_legend(override.aes = list(colour=c("#ff62bc")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+## ROC
+
+### NONFDR
+
+```{r}
+sim_GAM2_roc_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type))  +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=14), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change \nin metabolite abundance.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#f564e3")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+
+### FDR
+
+```{r}
+srfdr_GAM2_roc_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change \nin metabolite abundance, and their respective FDR calculated values.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,9), guide=guide_legend(override.aes = list(colour=c("#ff62bc")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+
+# GAM3
+
+## INDIV
+
+### NONFDR
+
+```{r}
+sim_GAM3_indiv_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for metabolite abundance \nat individual visits.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#c77cff")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+###FDR
+
+```{r}
+srfdr_GAM3_indiv_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for metabolite abundance \nat individual visit, and their respective FDR calculated values.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,9), guide=guide_legend(override.aes = list(colour=c("#ff61cc")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+
+## ROC
+
+### NONFDR
+
+```{r}
+sim_GAM3_roc_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type))  +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=14), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change \nin metabolite abundance.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,5), guide=guide_legend(override.aes = list(colour=c("#f564e3")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+
+### FDR
+
+```{r}
+srfdr_GAM3_roc_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change \nin metabolite abundance, and their respective FDR calculated values.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,9), guide=guide_legend(override.aes = list(colour=c("#ff62bc")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+# Individual visits inc. FDR
+
+```{r}
+srfdr_indiv_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for metabolite abundance \nat individual visit, and their respective FDR calculated values.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,9), guide=guide_legend(override.aes = list(colour=c("#ff61cc")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+# ROC visits inc. FDR
+
+```{r}
+srfdr_roc_plot <- function(long_data, long_filt_data, sig_data){
+  plot <- long_data %>% mutate(name=factor(as.character(name),levels=unique(name))) %>%
+  ggplot(aes(x = name, y = value, colour = type, group=type)) +
+  geom_rect(xmin=0, xmax=98, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=98, xmax=168, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=168, xmax=171, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=171, xmax=180, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=180, xmax=189, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=189, xmax=192, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=192, xmax=208, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=208, xmax=213, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=213, xmax=222, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=222, xmax=225, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  geom_rect(xmin=225, xmax=227, ymin=-0.15, ymax=1,fill="white", colour=NA) +
+  geom_rect(xmin=227, xmax=228, ymin=-0.15, ymax=1,fill="azure2", colour=NA, alpha=0.5) +
+  annotate(geom="text", x=(xminval+xmaxval)/2, y=-0.07, label=as.factor(metgroup), size=5) +
+  geom_point() + 
+  geom_line(data=long_data[which(long_data$type != "real_pvalue"),], aes(x=name, y=value, group=type[which(type != "real_pvalue")])) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size=0.3),
+        axis.title.x = element_text(size=17),
+        axis.title.y = element_text(size=17),
+        plot.title = element_text(size=17),
+        aspect.ratio=7/21,
+        legend.title = element_text(face="bold", size=15), 
+        legend.text = element_text(size=14),
+        legend.position="bottom") +
+  labs(title = "Comparison of p-values generated from simulated data against p-values from real data for rate of change \nin metabolite abundance, and their respective FDR calculated values.",
+       x = "Individual Metabolite",
+       y = "P-value") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "red", size=0.3) +
+  geom_point(data=long_filt_data[which(long_filt_data$type =="real_pvalue"),], aes(x = name, y = value, fill = "real_pvalue", group=type), shape=17, size=3.5) +
+  scale_fill_manual("real data p-values \noutside range", values=rep(1,9), guide=guide_legend(override.aes = list(colour=c("#ff61cc")))) + 
+  guides(colour = guide_legend(override.aes = list(shape = 20))) +
+  annotate(geom = "text", x = sig_data$name, y = sig_data$value_pvalue - 0.03, label = rownames(sig_data), size = 5)
+  plot
+}
+```
+
+
+```{r}
+save.image(file = "8C_graphadjust_workspace.RData")
+```
+

@@ -1,0 +1,77 @@
+---
+title: "Rate of Change in Metabolites Between Visits"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+
+Library read-in
+```{r}
+library(plyr)
+library(tidyverse)
+library(readr)
+library(grid)
+```
+
+```{r}
+meta <- read_csv("metabolite_clean_data.csv")
+```
+
+Now, we need to isolate the participant_id values which have metabolite data for visit 1, 3 and 5.
+
+This creates a data set of participant_id values which have metabolite data for visit 1, 3 and 5, but also keeps all other visits. Need to filter out the unnecessary data of followup values.
+
+```{r}
+meta %>% group_by(participant_id) %>% 
+  filter("Visit 1" %in% visno & "Visit 3" %in% visno & "Visit 5" %in% visno, visno %in% c("Visit 1","Visit 3","Visit 5")) %>% 
+  ungroup() -> meta_visits
+
+summary(as.factor(meta_visits$visno))
+```
+
+Need to create a dataset which includes the participant_id, f72_neo_sex, category, child_adip_over, and all metabolites from the NMR metabolite data set, but looking at the rate of change per metabolite between visits i.e., visit 1 to visit 3, visit 3 to visit 5 and visit 1 to visit 5. 
+
+```{r}
+meta %>%
+  arrange(participant_id,visno) %>%
+  mutate(change=case_when(visno=="Visit 1"~"1-3",visno=="Visit 3"~"3-5",visno=="Visit 5"~"1-5")) %>%
+  group_by(participant_id) %>%
+  mutate_at(vars(-c(participant_id, visno, f72_neo_sex.y, mbodpodbmi, Category, child_adip_over, child_adip_ob, f38c_gdm, change)),
+            ~case_when(visno=="Visit 1"~(nth(.,2)-first(.))/first(.)*100,
+                       visno=="Visit 3"~(nth(.,3)-nth(.,2))/nth(.,2)*100,
+                       visno=="Visit 5"~(nth(.,3)-first(.))/first(.)*100)) %>%
+  relocate(change,.before="visno") %>%
+  select(-visno) -> meta_roc
+
+```
+
+The new dataset meta_roc shows the rates of change in % for each metabolite. The visits from which the numbers are taken from are mentioned in the 'change' variable. A negative value shows a % decrease, and a positive value shows a % increase i.e. -50.945 is a 50.945% decrease, and 162.85 is a 62.85% increase in metabolite volume between visits.
+
+```{r}
+write.csv(meta_roc, "I:/Documents/PhD files/Kim/UPBEAT/Data Files\\meta_roc_btwn_visits.csv", row.names=F)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

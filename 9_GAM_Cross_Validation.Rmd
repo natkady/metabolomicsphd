@@ -1,0 +1,181 @@
+---
+title: "GAM CV"
+output: html_document
+date: "2026-03-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+```
+
+# Library read-in
+```{r}
+library(plyr)
+library(tidyverse)
+library(readr)
+library(grid)
+library(stats)
+library(rstatix)
+library(readxl)
+```
+
+We want to create functions to impute for the 4 GAMs simulated.
+
+```{r}
+GAM1 <- function(df1){
+  mgcv::gam(child_adip_over=="Yes" ~ s(value), data=df1, family=binomial)
+}
+
+GAM2 <- function(df1){
+  mgcv::gam(child_adip_over=="Yes" ~ s(value) + gdm + child_sex, data=df1, family=binomial)
+}
+
+GAM3 <- function(df1){
+  mgcv::gam(child_adip_over=="Yes" ~ s(value) + child_sex, data=df1, family=binomial)
+}
+
+GAM4 <- function(df1){
+  mgcv::gam(child_adip_over=="Yes" ~ gdm + s(value, by = gdm), data = df1, family = binomial)
+}
+```
+
+We will start with individual visit data, performing cross validation on the models at each visit.
+
+
+
+```{r}
+requiredPackages <- c("here", "rstudioapi",
+    "stringr", "RColorBrewer", "ggplot2",
+    "dplyr", "tidyverse", "R.utils", "ggpubr",
+    "hrbrthemes", "fields", "maps", "raster",
+    "scam", "plotmo", "pkgbuild", "dismo",
+    "SDMTools")
+
+install_load_function <- function(pkg) {
+    new.pkg <- pkg[!(pkg %in% installed.packages()[,
+        "Package"])]
+    if (length(new.pkg))
+        install.packages(new.pkg, dependencies = TRUE)
+    sapply(pkg, require, character.only = TRUE)
+}
+
+install_load_function(requiredPackages)
+```
+```{r}
+find_rtools()
+
+install.packages('remotes')
+remotes::install_version('SDMTools', version = '1.1-221.2')
+
+library(SDMTools)
+```
+
+
+
+# Visit 1
+## GAM1
+
+
+```{r}
+G1V1 <- GAM1(df_long_v1)
+```
+
+
+```{r}
+G1V1data <- G1V1$model
+
+# Predict
+scgam.predG1V1 <- predict(G1V1, newdata = G1V1data,
+    type = "response")
+
+# Add the prediction to the data object
+G1V1data$scgam.predG1V1 <- as.vector(scgam.predG1V1)
+head(G1V1data)
+
+# Optimizing the threshold probability
+obs <- G1V1data$`child_adip_over == "Yes"`
+predSCGAM_P <- G1V1data$scgam.predG1V1
+
+# Threshold optimizing
+myoptim <- optim.thresh(obs, predSCGAM_P)
+myoptim
+# Select the threshold that maximizes
+# the sum of sensitivity and
+# specificity
+myThreshold <- as.numeric((myoptim[["max.sensitivity+specificity"]]))
+# Accuracy values with all observations
+accuracy(obs, predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(obs, predSCGAM_P, threshold = myThreshold)
+
+```
+
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G1V1data, k, by = G1V1data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G1V1)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G1V1$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- G1V1data[groups != j, ]
+
+# Model fit
+G1V1.sp.j <- mgcv::gam(child_adip_over ~ s(value),
+                       family = binomial(link = "logit"),
+                       data = p_train %>% rename(child_adip_over=`child_adip_over == "Yes"`), sp = c(sp))
+
+# Predict Model
+    p_validation <- G1V1data[groups == j, ]
+
+    G1V1.sp.j.pred <- predict(G1V1.sp.j,
+        newdata = p_validation %>% rename(child_adip_over=`child_adip_over == "Yes"`), type = "response")
+    p_validation$Pred <- G1V1.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- p_validation$`child_adip_over == "Yes"`
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(obs,
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(obs, predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omision = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+
+# Visit 3
+
+
+# Visit 5
+
+

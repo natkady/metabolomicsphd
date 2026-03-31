@@ -1,0 +1,77 @@
+---
+title: "Obesity Categorisation"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+## R Markdown
+
+
+
+```{r, echo=FALSE}
+library(haven) #library needed for reading in stata files.
+library(dplyr)
+library(tidyverse)
+library(naniar)
+```
+
+First step to creating a category for obesity was to open library haven to read in stata files. To create the new variable, we need to read in 2 separate data files: child.dta and the UPBEAT_dataset_to_share_Dygas_078.dta and link them. From child.dta, we need 4 variables: contactmaternalstudyid (to link the datasets together, its the variable which appears in all data sets associated with UPBEAT and TEMPO), mbodpodbmi, measweight and measheightmean. from UPBEAT, we need: participant_id (the variable which links to contactmaternalstudyid, they're called different names, but have the same observations), and f72_neo_sex. Using f72_neo_sex and mbodpodbmi, we can categorise the children at 3/4 years old as obese, overweight or other.
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+child <- read_dta("child.dta") 
+child_bmi <- child[,c("contactmaternalstudyid","mbodpodbmi","measweight","measheightmean")]
+
+upbeat <- read_dta("UPBEAT_dataset_to_share_Dygas_078.dta")
+upbeat_infsex <- upbeat[,c("participant_id", "f72_neo_sex")]
+
+```
+
+Now that we have read in the appropriate data, we need to link the data sets together.
+
+```{r}
+child_bmi1 <- child_bmi %>% merge(x = upbeat_infsex, y = child_bmi, by.x = "participant_id",
+                                  by.y = "contactmaternalstudyid")
+child_bmi1[child_bmi1==""]<-NA
+```
+Once the data sets were joined, we replaced empty space for BMI with NAs, to clean up the data variable.
+
+Now that we have a singular data set, we can create an obesity categorisation variable using obesity thersholds for male and female children. The cut-offs are 19.29 for male children and 19.15 for female children to categorise them as obese, and the cut-offs for overweight were 17.55 for male children and 17.28 for female children. 
+
+```{r}
+library(tidyr)
+child_obesity <- child_bmi1 %>% drop_na(mbodpodbmi)
+
+obesity <- child_obesity %>% mutate(Category = case_when(mbodpodbmi >= 19.57 & f72_neo_sex=="Male" ~ "Obese",
+                                                         mbodpodbmi >= 19.36 & f72_neo_sex=="Female" ~ "Obese",
+                                                         mbodpodbmi >= 17.89 & mbodpodbmi < 19.57 & f72_neo_sex == "Male" ~ "Overweight",
+                                                         mbodpodbmi >= 17.56 & mbodpodbmi < 19.36 & f72_neo_sex == "Female" ~ "Overweight",
+                                                         TRUE ~ "Other"))
+
+summary(as.factor(obesity$Category))
+
+```
+Summarising the data shows that out of the children for whom we have a BMI reading, we had "Obese" = 31, "Overweight" = 89, "Other" = 292. Using this we can then create a binary variable (yes/no) for childhood adiposity. There will be 2 separate categorisations: overweight and above (yes), other (no) and obese (yes), overweight and below (no). These will be named child_adip_over and child_adip_ob.
+
+```{r}
+obesity <- obesity %>% 
+  mutate(child_adip_over = case_when(
+    Category == "Obese" | Category == "Overweight" ~ "Yes",
+    TRUE ~ "No"),
+    child_adip_ob = case_when(Category =="Obese" ~ "Yes",TRUE ~ "No"))
+
+```
+
+Now that we have the binary data for obesity, we can save the data set for further analysis.
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+write.csv(obesity,"obesity_child_cat.csv", row.names= F)
+```
+
+
+

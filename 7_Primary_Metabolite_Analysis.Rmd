@@ -1,0 +1,955 @@
+---
+title: "Primary Analysis of Clean Metabolite Data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+Library read-in
+```{r}
+library(plyr)
+library(tidyverse)
+library(readr)
+library(grid)
+```
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+meta_clean <- read_csv("metabolite_clean_data.csv")
+```
+
+Once the metabolites have been explored for individual visits, we need to look at the metabolites based on rates of change between visits i.e. between visit 1 and 3, visit 3 and 5, and visit 1 and 5. For this we need to read in a second data set which contains the rate of change values for all metabolites. 
+
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+meta_roc <- read_csv("meta_roc_btwn_visits.csv")
+
+```
+
+## Visit 1 - Primary Analysis of Metabolite Data at Visit 1 ##
+
+```{r}
+df <- meta_clean %>% dplyr::select(participant_id, visno, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(visno=="Visit 1")
+
+```
+
+```{r}
+df_long <- df %>%  dplyr::select(-visno) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+Above code creates a long version of the data, where there is one column for all metabolite names, and one column for all associated values for that metabolite (depending on child sex, adiposty, participant id etc).
+
+For an example for one metablite, we can create a dataframe df1 which takes the values for one single metablite from df_long
+
+```{r}
+df1 <- filter(df_long, name=="xxlvldlp")
+```
+
+```{r}
+fun_one <- function(df1){
+  xmean <- mean(df1$value)
+  xmean
+} # this function takes the values of the metabolite xxlvldlp and finds and outputs the mean of the values
+
+```
+
+```{r}
+fun_two <- function(df1){
+  z <- glm(child_adip_over=="Yes" ~ value + gdm + child_sex, data = df1, family=binomial)
+  summary(z)$coefficients["value",]
+}
+```
+
+This function (fun_two) creates a glm (binary logistic regression) with metabolite values, gdm and child_sex as explanatory variables, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). 
+
+```{r}
+fun_three <- function(df1){
+  z <- glm(child_adip_over=="Yes" ~ value + gdm + child_sex, data = df1, family=binomial)
+  z_out <- c(summary(z)$coefficients["value",],summary(z)$coefficients["gdm",],summary(z)$coefficients["child_sexMale",])
+  z_names <- c("est","se","zvalue","pvalue")
+  z_names <- c(paste("value",z_names, sep="_"),paste("gdm",z_names, sep="_"),paste("child_sex_male",z_names, sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+The function fun_three creates a data frame for the glm (as in fun_two), but it also includes the coefficients for the gdm and child_sex explanatory variables from the logistic regression.
+
+```{r}
+z <- ddply(df_long, .(name), fun_three)
+```
+
+ddply() maps from data frame to data frame, using fun_three, for all metabolites in df_long. 
+
+```{r}
+fun_four <- function(df1){
+  g1 <- df1 %>% ggplot(aes(x=value)) + geom_histogram()
+  g2 <- df1 %>% ggplot(aes(x=value, y=child_adip_over)) + geom_boxplot()
+  g3 <- df1 %>% ggplot(aes(x=value, y=child_adip_ob)) + geom_boxplot()
+  g4 <- df1 %>% mutate(gdm=factor(gdm)) %>% ggplot(aes(x=value, y=gdm)) + geom_boxplot()
+  g5 <- df1 %>% ggplot(aes(x=value, y=child_sex)) + geom_boxplot()
+  gridExtra::grid.arrange(g1,g2,g3,g4,g5, ncol=2, top=textGrob(unique(df1$name), gp=gpar(fontsize=20, font=2)))
+}
+```
+
+The function fun_four creates 5 graphs for inputted data frame: a histogram of values per metabolite, a boxplot of metabolite values according to child adiposity, boxplot of metabolite values according to gdm category and a boxplot of metabolite values according to child sex.
+
+```{r}
+pdf("Visit_1_Metabolite_Hists.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_four)
+dev.off()
+```
+
+The code above saves the plots from fun_four for all metabolites in df_long to a single pdf (each metabolite on a separate page).
+
+
+```{r}
+fun_five <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ s(value), data=df1, family=binomial)
+  plot(z, main = unique(df1$name))
+}
+```
+
+This function (fun_five) creates a gam binary logistic regression with metabolite values, smoothed, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). We look at the plot of the gam to look for evidence of curviture (non-linearity). 
+
+
+```{r}
+pdf("Visit_1_Metabolite_GAM_plots.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_five)
+dev.off()
+
+```
+
+The code above saves the gam plots for all metabolites in df_long to a single pdf (each metabolite on a separate page), where d_ply is a function mapping from data frame to something else.
+
+```{r}
+fun_six <- function(df1){
+  z <- mgcv::gam(child_adip_over=="No" ~ s(value), data=df1, family=binomial)
+  plot(z, main = unique(df1$name))
+  
+}
+```
+
+```{r}
+fun_seven <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ s(value), data=df1, family=binomial)
+  #summary(z)$s.table[,4]
+  z_out <- c(summary(z)$s.table[,c(3,4)])
+  z_names <- c("Fvalue","pvalue")
+  z_names <- c(paste("value",z_names, sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+The above function pulls out the F value and p-value for all the metabolites using GAM model. Below, we see how the values are saved in a new data frame, z, with 3 columns: name of metabolite, the metabolites z-value and the metabolites p-value.
+
+```{r}
+z <- ddply(df_long, .(name), fun_seven)
+gg1 <- z %>% ggplot(aes(x=value_pvalue)) + 
+  geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30) +
+  geom_density(alpha=.2, fill="#FF6666") + ggtitle("a)") + xlab("Metabolite p-values") +
+  geom_vline(xintercept = 0.05, col="red")#shows distribution of pvalues
+gg1
+```
+
+
+```{r}
+fun_eight <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ s(value) + gdm + child_sex, data=df1, family=binomial)
+  #summary(z)$s.table
+  z_out <- c(summary(z)$s.table[,c(3,4)])
+  z_names <- c("chi.sq","pvalue")
+  z_names <- c(paste("value",z_names, sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+The above and below code does the same as for fun_seven, but the GAM in fun_eight include terms for gdm and child_sex clasifications. 
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_eight)
+gg2 <- z1 %>% ggplot(aes(x=value_pvalue)) + geom_histogram(aes(y=..density..), colour="black", fill="white",  bins=30) +
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("b)") + xlab("Metabolite p-values") +
+  geom_vline(xintercept = 0.05, col="red") #shows distribution of pvalues
+gg2
+```
+
+```{r}
+fun_nine <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ s(value) + child_sex, data=df1, family=binomial)
+  #summary(z)$s.table
+  z_out <- c(summary(z)$s.table[,c(3,4)])
+  z_names <- c("chi.sq","pvalue")
+  z_names <- c(paste("value",z_names, sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+
+```{r}
+z2 <- ddply(df_long, .(name), fun_nine)
+gg3 <- z2 %>% ggplot(aes(x=value_pvalue)) + geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30) +
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("c)") + xlab("Metabolite p-values") +
+  geom_vline(xintercept = 0.05, col="red") #shows distribution of pvalues
+gg3
+```
+
+
+```{r}
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Visit 1 GAM p-values for Metabolites")
+```
+
+```{r}
+png("Visit_1_GAM_pvalues_for_Metabolites.png")
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Visit 1 GAM p-values for Metabolites")
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the GAM models. fun_ten creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+png("Visit_1_QQ_Plots_for_GAM_Residuals.png")
+fun_ten(df_long)
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the p-values of the GAM models. fun_twelve creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_seven)
+z2 <- ddply(df_long, .(name), fun_eight)
+z3 <- ddply(df_long, .(name), fun_nine)
+png("Visit_1_QQ_Plots_for_GAM_pvalues.png", height=500, width=1000)
+par(mfrow=c(1,3), mar=c(5,5,2,1))
+qqp1 <- gaston::qqplot.pvalues(p=z1$value_pvalue, col.abline = "red", CB = TRUE, main = "a)", cex.lab=1.5, cex.axis=1.5) #shows qq plot
+qqp2 <- gaston::qqplot.pvalues(p=z2$value_pvalue, col.abline = "red", CB = TRUE, main = "b)", cex.lab=1.5, cex.axis=1.5) #shows qq plot
+qqp3 <- gaston::qqplot.pvalues(p=z3$value_pvalue, col.abline = "red", CB = TRUE, main = "c)", cex.lab=1.5, cex.axis=1.5) #shows qq plot
+dev.off()
+```
+
+
+
+
+## Visit 3 - Primary Analysis of Metabolite Data at Visit 3 ##
+
+```{r}
+df <- meta_clean %>% dplyr::select(participant_id, visno, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(visno=="Visit 3")
+
+```
+
+```{r}
+df_long <- df %>%  dplyr::select(-visno) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+Above code creates a long version of the data, where there is one column for all metabolite names, and one column for all associated values for that metabolite (depending on child sex, adiposty, participant id etc).
+
+The function fun_three creates a data frame for the glm (as in fun_two), but it also includes the coefficients for the gdm and child_sex explanatory variables from the logistic regression.
+
+```{r}
+z <- ddply(df_long, .(name), fun_three)
+```
+
+The function fun_four creates 4 graphs for inputted data frame: a histogram of values per metabolite, a boxplot of metabolite values according to child adiposity, boxplot of metabolite values according to gdm category and a boxplot of metabolite values according to child sex.
+
+```{r}
+pdf("Visit_3_Metabolite_Hists.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_four)
+dev.off()
+```
+
+
+This function (fun_five) creates a gam binary logistic regression with metabolite values, smoothed, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). We look at the plot of the gam to look for evidence of curviture (non-linearity). 
+
+
+```{r}
+pdf("Visit_3_Metabolite_GAM_plots.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_five)
+dev.off()
+
+```
+
+```{r}
+z <- ddply(df_long, .(name), fun_seven)
+gg1 <- z %>% ggplot(aes(x=value_pvalue)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("a)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red")#shows distribution of pvalues
+gg1
+```
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_eight)
+gg2 <- z1 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("b)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg2
+```
+
+
+```{r}
+z2 <- ddply(df_long, .(name), fun_nine)
+gg3 <- z2 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("c)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg3
+```
+
+```{r}
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Visit 3 GAM p-values for Metabolites")
+```
+
+```{r}
+png("Visit_3_GAM_pvalues_for_Metabolites.png")
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Visit 3 GAM p-values for Metabolites")
+dev.off()
+```
+
+
+The next thing we want to look at are the QQ plots for the GAM models. fun_ten creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+png("Visit_3_QQ_Plots_for_GAM_Residuals.png")
+fun_ten(df_long)
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the p-values of the GAM models. fun_twelve creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_seven)
+z2 <- ddply(df_long, .(name), fun_eight)
+z3 <- ddply(df_long, .(name), fun_nine)
+png("Visit_3_QQ_Plots_for_GAM_pvalues.png", height=500, width=1000)
+par(mfrow=c(1,3), mar=c(5,5,2,1))
+qqp1 <- gaston::qqplot.pvalues(p=z1$value_pvalue, col.abline = "red", CB = TRUE, main = "a)", cex.lab=1.5) #shows qq plot
+qqp2 <- gaston::qqplot.pvalues(p=z2$value_pvalue, col.abline = "red", CB = TRUE, main = "b)", cex.lab=1.5) #shows qq plot
+qqp3 <- gaston::qqplot.pvalues(p=z3$value_pvalue, col.abline = "red", CB = TRUE, main = "c)",cex.lab=1.5) #shows qq plot 
+dev.off()
+```
+
+
+
+## Visit 5 - Primary Analysis of Metabolite Data at Visit 5 ##
+
+
+
+```{r}
+df <- meta_clean %>% dplyr::select(participant_id, visno, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(visno=="Visit 5")
+
+```
+
+```{r}
+df_long <- df %>%  dplyr::select(-visno) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+Above code creates a long version of the data, where there is one column for all metabolite names, and one column for all associated values for that metabolite (depending on child sex, adiposty, participant id etc).
+
+The function fun_three creates a data frame for the glm (as in fun_two), but it also includes the coefficients for the gdm and child_sex explanatory variables from the logistic regression.
+
+```{r}
+z <- ddply(df_long, .(name), fun_three)
+```
+
+The function fun_four creates 4 graphs for inputted data frame: a histogram of values per metabolite, a boxplot of metabolite values according to child adiposity, boxplot of metabolite values according to gdm category and a boxplot of metabolite values according to child sex.
+
+```{r}
+pdf("Visit_5_Metabolite_Hists.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_four)
+dev.off()
+```
+
+
+This function (fun_five) creates a gam binary logistic regression with metabolite values, smoothed, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). We look at the plot of the gam to look for evidence of curviture (non-linearity). 
+
+
+```{r}
+pdf("Visit_5_Metabolite_GAM_plots.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_five)
+dev.off()
+
+```
+
+```{r}
+z <- ddply(df_long, .(name), fun_seven)
+gg1 <- z %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("a)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red")#shows distribution of pvalues
+gg1
+```
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_eight)
+gg2 <- z1 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("b)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg2
+```
+
+
+```{r}
+z2 <- ddply(df_long, .(name), fun_nine)
+gg3 <- z2 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("c)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg3
+```
+
+```{r}
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Visit 5 GAM p-values for Metabolites")
+```
+
+```{r}
+png("Visit_5_GAM_pvalues_for_Metabolites.png")
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Visit 5 GAM p-values for Metabolites")
+dev.off()
+```
+The next thing we want to look at are the QQ plots for the GAM models. fun_ten creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+png("Visit_5_QQ_Plots_for_GAM_Residuals.png")
+fun_ten(df_long)
+dev.off()
+```
+
+
+The next thing we want to look at are the QQ plots for the p-values of the GAM models. fun_twelve creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_seven)
+z2 <- ddply(df_long, .(name), fun_eight)
+z3 <- ddply(df_long, .(name), fun_nine)
+png("Visit_5_QQ_Plots_for_GAM_pvalues.png", height=500, width=1000)
+par(mfrow=c(1,3), mar=c(5,5,2,1), cex.lab=2, cex.axis=2, cex.main=2)
+qqp1 <- gaston::qqplot.pvalues(p=z1$value_pvalue, col.abline = "red", CB = TRUE, main = "a)") #shows qq plot
+qqp2 <- gaston::qqplot.pvalues(p=z2$value_pvalue, col.abline = "red", CB = TRUE, main = "b)") #shows qq plot
+qqp3 <- gaston::qqplot.pvalues(p=z3$value_pvalue, col.abline = "red", CB = TRUE, main = "c)") #shows qq plot
+dev.off()
+```
+
+
+
+## RoC Between Visits 1 and 3 ##
+
+```{r}
+df <- meta_roc %>% dplyr::select(participant_id, change, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(change=="1-3")
+
+```
+
+```{r}
+df_long <- df %>%  dplyr::select(-change) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+Above code creates a long version of the data, where there is one column for all metabolite names, and one column for all associated values for that metabolite (depending on child sex, adiposty, participant id etc).
+
+The function fun_three creates a data frame for the glm (as in fun_two), but it also includes the coefficients for the gdm and child_sex explanatory variables from the logistic regression.
+
+```{r}
+z <- ddply(df_long, .(name), fun_three)
+```
+
+The function fun_four creates 4 graphs for inputted data frame: a histogram of values per metabolite, a boxplot of metabolite values according to child adiposity, boxplot of metabolite values according to gdm category and a boxplot of metabolite values according to child sex.
+
+```{r}
+pdf("RoC_Visits_1_3_Metabolite_Hists.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_four)
+dev.off()
+```
+
+
+This function (fun_five) creates a gam binary logistic regression with metabolite values, smoothed, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). We look at the plot of the gam to look for evidence of curviture (non-linearity). 
+
+
+```{r}
+pdf("RoC_Visits_1_3_Metabolite_GAM_plots.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_five)
+dev.off()
+
+```
+
+```{r}
+z <- ddply(df_long, .(name), fun_seven)
+gg1 <- z %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("a)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg1
+```
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_eight)
+gg2 <- z1 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("b)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg2
+```
+
+
+```{r}
+z2 <- ddply(df_long, .(name), fun_nine)
+gg3 <- z2 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("c)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg3
+```
+
+```{r}
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Rate of Change Between Visit 1 and 3 GAM p-values for Metabolites")
+```
+
+```{r}
+png("RoC_Visits_1_3_GAM_pvalues_for_Metabolites.png")
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Rate of Change Between Visit 1 and 3 GAM p-values for Metabolites")
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the GAM models. fun_ten creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+png("RoC_Visit_1_3_QQ_Plots_for_GAM_Residuals.png")
+fun_ten(df_long)
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the p-values of the GAM models. fun_twelve creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_seven)
+z2 <- ddply(df_long, .(name), fun_eight)
+z3 <- ddply(df_long, .(name), fun_nine)
+png("RoC_Visit_1_3_QQ_Plots_for_GAM_pvalues.png", height=500, width=1000)
+par(mfrow=c(1,3), mar=c(5,5,2,1))
+qqp1 <- gaston::qqplot.pvalues(p=z1$value_pvalue, col.abline = "red", CB = TRUE, main = "a)", cex.lab=1.5) #shows qq plot
+qqp2 <- gaston::qqplot.pvalues(p=z2$value_pvalue, col.abline = "red", CB = TRUE, main = "b)", cex.lab=1.5) #shows qq plot
+qqp3 <- gaston::qqplot.pvalues(p=z3$value_pvalue, col.abline = "red", CB = TRUE, main = "c)", cex.lab=1.5) #shows qq plot
+dev.off()
+```
+
+## RoC Between Visits 3 and 5 ##
+
+```{r}
+df <- meta_roc %>% dplyr::select(participant_id, change, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(change=="3-5")
+
+```
+
+```{r}
+df_long <- df %>%  dplyr::select(-change) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+Above code creates a long version of the data, where there is one column for all metabolite names, and one column for all associated values for that metabolite (depending on child sex, adiposty, participant id etc).
+
+The function fun_three creates a data frame for the glm (as in fun_two), but it also includes the coefficients for the gdm and child_sex explanatory variables from the logistic regression.
+
+```{r}
+z <- ddply(df_long, .(name), fun_three)
+```
+
+The function fun_four creates 4 graphs for inputted data frame: a histogram of values per metabolite, a boxplot of metabolite values according to child adiposity, boxplot of metabolite values according to gdm category and a boxplot of metabolite values according to child sex.
+
+```{r}
+pdf("RoC_Visits_3_5_Metabolite_Hists.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_four)
+dev.off()
+```
+
+
+This function (fun_five) creates a gam binary logistic regression with metabolite values, smoothed, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). We look at the plot of the gam to look for evidence of curviture (non-linearity). 
+
+
+```{r}
+pdf("RoC_Visits_3_5_Metabolite_GAM_plots.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_five)
+dev.off()
+
+```
+
+```{r}
+z <- ddply(df_long, .(name), fun_seven)
+gg1 <- z %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("a)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg1
+```
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_eight)
+gg2 <- z1 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("b)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg2
+```
+
+
+```{r}
+z2 <- ddply(df_long, .(name), fun_nine)
+gg3 <- z2 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("c)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg3
+```
+
+```{r}
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Rate of Change Between Visit 3 and 5 GAM p-values for Metabolites")
+```
+
+```{r}
+png("RoC_Visits_3_5_GAM_pvalues_for_Metabolites.png")
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Rate of Change Between Visit 3 and 5 GAM p-values for Metabolites")
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the GAM models. fun_ten creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+png("RoC_Visit_3_5_QQ_Plots_for_GAM_Residuals.png")
+fun_ten(df_long)
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the p-values of the GAM models. fun_twelve creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_seven)
+z2 <- ddply(df_long, .(name), fun_eight)
+z3 <- ddply(df_long, .(name), fun_nine)
+png("RoC_Visit_3_5_QQ_Plots_for_GAM_pvalues.png", height=500, width=1000)
+par(mfrow=c(1,3), mar=c(5,5,2,1))
+qqp1 <- gaston::qqplot.pvalues(p=z1$value_pvalue, col.abline = "red", CB = TRUE, main = "a)", cex.lab=1.5) #shows qq plot
+qqp2 <- gaston::qqplot.pvalues(p=z2$value_pvalue, col.abline = "red", CB = TRUE, main = "b)", cex.lab=1.5) #shows qq plot
+qqp3 <- gaston::qqplot.pvalues(p=z3$value_pvalue, col.abline = "red", CB = TRUE, main = "c)", cex.lab=1.5) #shows qq plot
+dev.off()
+```
+
+## RoC Between Visits 1 and 5 ##
+
+```{r}
+df <- meta_roc %>% dplyr::select(participant_id, change, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(change=="1-5")
+
+```
+
+```{r}
+df_long <- df %>%  dplyr::select(-change) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+Above code creates a long version of the data, where there is one column for all metabolite names, and one column for all associated values for that metabolite (depending on child sex, adiposty, participant id etc).
+
+The function fun_three creates a data frame for the glm (as in fun_two), but it also includes the coefficients for the gdm and child_sex explanatory variables from the logistic regression.
+
+```{r}
+z <- ddply(df_long, .(name), fun_three)
+```
+
+The function fun_four creates 4 graphs for inputted data frame: a histogram of values per metabolite, a boxplot of metabolite values according to child adiposity, boxplot of metabolite values according to gdm category and a boxplot of metabolite values according to child sex.
+
+```{r}
+pdf("RoC_Visits_1_5_Metabolite_Hists.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_four)
+dev.off()
+```
+
+
+This function (fun_five) creates a gam binary logistic regression with metabolite values, smoothed, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). We look at the plot of the gam to look for evidence of curviture (non-linearity). 
+
+
+```{r}
+pdf("RoC_Visits_1_5_Metabolite_GAM_plots.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_five)
+dev.off()
+
+```
+
+```{r}
+z <- ddply(df_long, .(name), fun_seven)
+gg1 <- z %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("a)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg1
+```
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_eight)
+gg2 <- z1 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("b)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg2
+```
+
+
+```{r}
+z2 <- ddply(df_long, .(name), fun_nine)
+gg3 <- z2 %>% ggplot(aes(x=value_pvalue))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666") + ggtitle("c)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red") #shows distribution of pvalues
+gg3
+```
+
+```{r}
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Rate of Change Between Visit 1 and 5 GAM p-values for Metabolites")
+```
+
+```{r}
+png("RoC_Visits_1_5_GAM_pvalues_for_Metabolites.png")
+gridExtra::grid.arrange(gg1,gg2,gg3, nrow=1, top="Rate of Change Between Visit 1 and 5 GAM p-values for Metabolites")
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the GAM models. fun_ten creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+png("RoC_Visit_1_5_QQ_Plots_for_GAM_Residuals.png")
+fun_ten(df_long)
+dev.off()
+```
+
+The next thing we want to look at are the QQ plots for the p-values of the GAM models. fun_twelve creates the QQ plots for the GAM model residuals and displays all three. Along with this, we want to save the graphs as .png files for  future reference.
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_seven)
+z2 <- ddply(df_long, .(name), fun_eight)
+z3 <- ddply(df_long, .(name), fun_nine)
+png("RoC_Visit_1_5_QQ_Plots_for_GAM_pvalues.png", height=500, width=1000)
+par(mfrow=c(1,3), mar=c(5,5,2,1), cex.lab=2, cex.axis=2, cex.main=2)
+qqp1 <- gaston::qqplot.pvalues(p=z1$value_pvalue, col.abline = "red", CB = TRUE, main = "a)") #shows qq plot
+qqp2 <- gaston::qqplot.pvalues(p=z2$value_pvalue, col.abline = "red", CB = TRUE, main = "b)") #shows qq plot
+qqp3 <- gaston::qqplot.pvalues(p=z3$value_pvalue, col.abline = "red", CB = TRUE, main = "c)") #shows qq plot
+dev.off()
+```
+
+
+# GAM4 - includes interaction between metabolites and GDM
+
+## vis5 indiv
+
+```{r}
+df <- meta_clean %>% dplyr::select(participant_id, visno, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(visno=="Visit 5")
+
+```
+
+```{r}
+df_long <- df %>%  dplyr::select(-visno) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+```{r}
+df1 <- filter(df_long, name=="xxlvldlp")
+```
+
+
+Above code creates a long version of the data, where there is one column for all metabolite names, and one column for all associated values for that metabolite (depending on child sex, adiposty, participant id etc).
+
+The function fun_inter creates a data frame which includes the coefficients for the gdm and the interaction between gdm and metabolites as explanatory variables from the logistic regression.
+
+First need to create a function which creates the GAM and saves the p_values for the metabolites
+
+```{r}
+fun_inter <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ gdm + s(value, by = gdm), data = df1, family = binomial)
+  z_out <- c(summary(z)$s.table[,c(3,4)])
+  z_names <- c("chi.sq","pvalue")
+  z_names <- c(paste("value:gdm",z_names, sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+
+```{r}
+z1 <- ddply(df_long, .(name), fun_inter)
+```
+
+```{r}
+png("Visit_5_QQ_Plots_for_GAM_pvalues_interaction.png", height=500, width=1000)
+par(mfrow=c(1,1), mar=c(5,5,2,1))
+qqp1 <- gaston::qqplot.pvalues(p=z1$'value:gdm_pvalue', col.abline = "red", CB = TRUE, main = "a)") #shows qq plot
+qqp1
+dev.off()
+```
+
+```{r}
+fun_inter_plot <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ gdm + s(value, by = gdm), data = df1, family = binomial)
+  plot(z, main = unique(df1$name))
+}
+```
+
+
+```{r}
+pdf("Visit_5_Metabolite_Interaction_GAM_plots.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_inter_plot)
+dev.off()
+```
+
+
+```{r}
+gg1 <- z1 %>% ggplot(aes(x=`value:gdm_pvalue`))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("Distribution of p-values for metabolites in interaction GAM model \nfor abundance of metabolites at visit 5.") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red")#shows distribution of pvalues
+gg1
+```
+
+
+
+```{r}
+png("Visit_5_Interaction_GAM_pvalues_for_Metabolites.png")
+gg1
+dev.off()
+```
+=
+
+```{r}
+fun_inter_qq <- function(df1){
+   z <- mgcv::gam(child_adip_over=="Yes" ~ gdm + s(value, by = gdm), data = df1, family = binomial)
+   mgcv::qq.gam(z,cex=3, main="QQ Plot of residuals in interaction GAM model")
+}
+```
+
+
+```{r}
+png("Visit_5_QQ_Plots_for_Interaction_GAM_Residuals.png")
+fun_inter_qq(df_long)
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+## vis15 roc
+
+```{r}
+df <- meta_roc %>% dplyr::select(participant_id, change, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(change=="1-5")
+
+```
+
+```{r}
+df_long <- df %>%  dplyr::select(-change) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+```{r}
+z2 <- ddply(df_long, .(name), fun_inter)
+```
+
+```{r}
+png("Visit_1_5_QQ_Plots_for_GAM_pvalues_interaction.png", height=500, width=1000)
+par(mfrow=c(1,1), mar=c(5,5,2,1))
+qqp2 <- gaston::qqplot.pvalues(p=z2$'value:gdm_pvalue', col.abline = "red", CB = TRUE, main = "a)") #shows qq plot
+qqp2
+dev.off()
+```
+
+```{r}
+pdf("RoC_Visits_1_5_Metabolite_Interaction_GAM_plots.pdf", width=7, height=7)
+d_ply(df_long, .(name), fun_inter_plot)
+dev.off()
+```
+
+
+```{r}
+gg2 <- z2 %>% ggplot(aes(x=`value:gdm_pvalue`))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("Distribution of p-values for metabolites in interaction GAM model \nfor rate of change in abundance of metabolites between visits 1 and 5.") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red")#shows distribution of pvalues
+gg2
+```
+
+
+
+```{r}
+png("RoC_Visits_1_5_Interaction_GAM_pvalues_for_Metabolites.png")
+gg1
+dev.off()
+```
+=
+
+```{r}
+png("RoC_Visits_1_5_QQ_Plots_for_Interaction_GAM_Residuals.png")
+fun_inter_qq(df_long)
+dev.off()
+```
+
+
+
+## p-value QQ plots for GAM4
+
+
+```{r}
+png("QQ_Plots_for_GAM4_pvalues_interaction.png", height=500, width=1000)
+par(mfrow=c(1,2), mar=c(5,5,2,1), cex.lab=2, cex.axis=2, cex.main=2)
+qqp1 <- gaston::qqplot.pvalues(p=z1$'value:gdm_pvalue', col.abline = "red", CB = TRUE, main = "a)") #shows qq plot
+qqp2 <- gaston::qqplot.pvalues(p=z2$'value:gdm_pvalue', col.abline = "red", CB = TRUE, main = "b)") #shows qq plot
+dev.off()
+```
+```{r}
+png("Interaction_GAM4_distribution_hists.png")
+
+gg1 <- z1 %>% ggplot(aes(x=`value:gdm_pvalue`))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("a)") + xlab("Metabolite p-values") + 
+  geom_vline(xintercept=0.05, col="red")#shows distribution of pvalues
+gg2 <- z2 %>% ggplot(aes(x=`value:gdm_pvalue`))+ 
+ geom_histogram(aes(y=..density..), colour="black", fill="white", bins=30)+
+ geom_density(alpha=.2, fill="#FF6666")  + ggtitle("b)") + 
+  geom_vline(xintercept=0.05, col="red")#shows distribution of pvalues
+
+gridExtra::grid.arrange(gg1,gg2,ncol=2)
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+

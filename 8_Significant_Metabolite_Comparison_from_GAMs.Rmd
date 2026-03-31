@@ -1,0 +1,1272 @@
+---
+title: "Comparison of Significant Metabolites from GAMs"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+# Library read-in
+```{r}
+library(plyr)
+library(tidyverse)
+library(readr)
+library(grid)
+library(stats)
+library(rstatix)
+library(readxl)
+```
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+meta_clean <- read_csv("metabolite_clean_data.csv")
+```
+
+
+Once the metabolites have been explored for individual visits, we need to look at the metabolites based on rates of change between visits i.e. between visit 1 and 3, visit 3 and 5, and visit 1 and 5. For this we need to read in a second data set which contains the rate of change values for all metabolites. 
+
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+meta_roc <- read_csv("meta_roc_btwn_visits.csv")
+```
+
+We want to look at the metabolites which are significant for all 3 GAM models at all visits, and compare them between visits as well as at rates of change between visits. The results will be compared to simulated data and how the p-values fall in comparison to the ranges of p-values generated from the simulated data. 
+
+Functions fun_seven, fun_eight, and fun_nine create the GAMs needed for this comparison of data.
+
+
+To order the metabolites in terms of type, rather than alphabetically, we need to load in the metabolite data dicitionary and pull out the column of names, then save it as a vector.
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+metdict <- read_excel("Copy of metabolome_data_dictionary_march2016.xlsx")
+vec <- metdict$`Variable Name`
+metgroup <- c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L")
+xminval <- c(0, 98, 168, 171, 180, 189, 192, 208, 213, 222, 225, 227)
+xmaxval <- c(98, 168, 171, 180, 189, 192, 208, 213, 222, 225, 227, 228)
+```
+
+
+
+## GAM 1 - only metabolites ##
+
+First we read in data for the different visits as separate data frames.
+
+```{r}
+dfv1 <- meta_clean %>% dplyr::select(participant_id, visno, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(visno=="Visit 1")
+df_long_v1 <- dfv1 %>%  dplyr::select(-visno) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+```{r}
+dfv3 <- meta_clean %>% dplyr::select(participant_id, visno, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(visno=="Visit 3")
+df_long_v3 <- dfv3 %>%  dplyr::select(-visno) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+```{r}
+dfv5 <- meta_clean %>% dplyr::select(participant_id, visno, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(visno=="Visit 5")
+df_long_v5 <- dfv5 %>%  dplyr::select(-visno) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+Once we have created the separate data frames for the visits, we want to create the GAM we want to look at closer (here, we want to look at the GAM with smoothed values for metabolites i.e. GAM from fun_seven).
+
+```{r}
+zv1 <- ddply(df_long_v1, .(name), fun_seven)
+zv3 <- ddply(df_long_v3, .(name), fun_seven)
+zv5 <- ddply(df_long_v5, .(name), fun_seven)
+```
+
+```{r}
+zv1 <- left_join(data.frame(name=vec), zv1, by="name")
+zv3 <- left_join(data.frame(name=vec), zv3, by="name")
+zv5 <- left_join(data.frame(name=vec), zv5, by="name")
+```
+
+
+Now that the GAMs have been fitted, we want to pull out the metabolites for which the value_pvalue <= 0.05.
+
+```{r}
+zv1_sig <- zv1 %>% filter(value_pvalue<=0.05)
+zv3_sig <- zv3 %>% filter(value_pvalue<=0.05)
+zv5_sig <- zv5 %>% filter(value_pvalue<=0.05)
+```
+
+The code above filters the value_pvalue column to the metabolites with a p-value <= 0.05. From the results, we can see that the significant metabolites differ between visits completely.
+
+
+We now want to simulate data for each visit, and compare the p-values from the simulated data to the p-values generated using the real data found using fun_seven. For this, we need to read in the functions from files 7A_Functions_For_Primary_Metabolite_Analysis.Rmd and 8B_Data_Simulation_PVAL.R. 
+
+```{r}
+sv1g <- sim_fun_GAM1(df_long_v1) #default number of simulations in this function = 100
+sv1 <- sim_centile_table(sv1g)
+sv1 <- left_join(data.frame(name=vec), sv1, by="name")
+s_z_v1 <- sv1 %>% mutate(real_pvalue = zv1$value_pvalue)
+
+```
+
+
+```{r}
+sv3g <- sim_fun_GAM1(df_long_v3)
+sv3 <- sim_centile_table(sv3g)
+sv3 <- left_join(data.frame(name=vec), sv3, by="name")
+s_z_v3 <- sv3 %>% mutate(real_pvalue = zv3$value_pvalue)
+```
+
+
+```{r}
+sv5g<- sim_fun_GAM1(df_long_v5)
+sv5 <- sim_centile_table(sv5g)
+sv5 <- left_join(data.frame(name=vec), sv5, by="name")
+s_z_v5 <- sv5 %>% mutate(real_pvalue = zv5$value_pvalue)
+```
+
+
+Now, we want to plot the simulated min/max/median values with the real p values to see how the differ.
+
+```{r}
+s_z_v1_long <- s_z_v1 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v1_filt <- s_z_v1 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v1_filt_long <- s_z_v1_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+#needed s_z_v1_long, s_z_v1_filt_long and zv1_sig
+
+gam1vis1 <- sim_GAM1_indiv_plot(s_z_v1_long, s_z_v1_filt_long, zv1_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_1_GAM1.png", plot=gam1vis1, height=7, width=15)
+```
+
+
+```{r}
+s_z_v3_long <- s_z_v3 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v3_filt <- s_z_v3 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v3_filt_long <- s_z_v3_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam1vis3 <- sim_GAM1_indiv_plot(s_z_v3_long, s_z_v3_filt_long, zv3_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_3_GAM1.png", plot=gam1vis3, height=7, width=15)
+```
+
+
+```{r}
+s_z_v5_long <- s_z_v5 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v5_filt <- s_z_v5 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v5_filt_long <- s_z_v5_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam1vis5 <- sim_GAM1_indiv_plot(s_z_v5_long, s_z_v5_filt_long, zv5_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_5_GAM1.png", plot=gam1vis5, height=7, width=15)
+
+```
+
+## GAM 2 - metabolites, gdm and child sex ##
+
+Once we have created the separate data frames for the visits, we want to create the GAM we want to look at closer (here, we want to look at the GAM with smoothed values for metabolites, gdm and child sex i.e. GAM from fun_eight).
+
+```{r}
+zv1b <- ddply(df_long_v1, .(name), fun_eight_adj)
+zv3b <- ddply(df_long_v3, .(name), fun_eight_adj)
+zv5b <- ddply(df_long_v5, .(name), fun_eight_adj)
+```
+
+```{r}
+zv1b <- left_join(data.frame(name=vec), zv1b, by="name")
+zv3b <- left_join(data.frame(name=vec), zv3b, by="name")
+zv5b <- left_join(data.frame(name=vec), zv5b, by="name")
+```
+
+
+Now that the GAMs have been fitted, we want to pull out the metabolites for which the value_pvalue <= 0.05.
+
+```{r}
+zv1b_sig <- zv1b %>% filter(value_pvalue<=0.05)
+zv3b_sig <- zv3b %>% filter(value_pvalue<=0.05)
+zv5b_sig <- zv5b %>% filter(value_pvalue<=0.05)
+```
+
+The code above filters the value_pvalue column to the metabolites with a p-value <= 0.05. From the results, we can see that the significant metabolites differ between visits, with one metabolite being seen as significant at all visits - metabolite "val" i.e. amino acid (branched chain) Valine.
+
+We now want to simulate data for each visit, and compare the p-values from the simulated data to the p-values generated using the real data found using fun_eight. For this, we need to read in the functions from files 7A_Functions_For_Primary_Metabolite_Analysis.Rmd and 8B_Data_Simulation_PVAL.R. 
+
+```{r}
+sv1bg <- sim_fun_GAM2(df_long_v1) #default number of simulations in this function = 100
+sv1b <- sim_centile_eight(sv1bg)
+sv1b <- left_join(data.frame(name=vec), sv1b, by="name")
+sb_z_v1 <- sv1b %>% mutate(real_pvalue = zv1b$value_pvalue)
+```
+
+
+```{r}
+sv3bg <- sim_fun_GAM2(df_long_v3) #default number of simulations in this function = 100
+sv3b <- sim_centile_eight(sv3bg)
+sv3b <- left_join(data.frame(name=vec), sv3b, by="name")
+sb_z_v3 <- sv3b %>% mutate(real_pvalue = zv3b$value_pvalue)
+```
+
+
+```{r}
+sv5bg <- sim_fun_GAM2(df_long_v5) #default number of simulations in this function = 100
+sv5b <- sim_centile_eight(sv5bg)
+sv5b <- left_join(data.frame(name=vec), sv5b, by="name")
+sb_z_v5 <- sv5b %>% mutate(real_pvalue = zv5b$value_pvalue)
+```
+
+
+Now, we want to plot the simulated min/max/median values with the real p values to see how the differ.
+
+```{r}
+sb_z_v1_long <- sb_z_v1 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v1_filt <- sb_z_v1 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v1_filt_long <- sb_z_v1_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam2vis1 <- sim_GAM2_indiv_plot(sb_z_v1_long, sb_z_v1_filt_long, zv1b_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_1_GAM2.png", plot=gam2vis1, height=7, width=15)
+```
+
+
+```{r}
+sb_z_v3_long <- sb_z_v3 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v3_filt <- sb_z_v3 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v3_filt_long <- sb_z_v3_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam2vis3 <- sim_GAM2_indiv_plot(sb_z_v3_long, sb_z_v3_filt_long, zv3b_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_3_GAM2.png", plot=gam2vis3, height=7, width=15)
+
+```
+
+
+```{r}
+sb_z_v5_long <- sb_z_v5 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v5_filt <- sb_z_v5 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v5_filt_long <- sb_z_v5_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam2vis5 <- sim_GAM2_indiv_plot(sb_z_v5_long, sb_z_v5_filt_long, zv5b_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_5_GAM2.png", plot=gam2vis5, height=7, width=15)
+
+```
+
+## GAM 3 - metabolites and child sex ##
+
+Once we have created the separate data frames for the visits, we want to create the GAM we want to look at closer (here, we want to look at the GAM with smoothed values for metabolites and child sex i.e. GAM from fun_nine).
+
+```{r}
+zv1c <- ddply(df_long_v1, .(name), fun_nine_adj)
+zv3c <- ddply(df_long_v3, .(name), fun_nine_adj)
+zv5c <- ddply(df_long_v5, .(name), fun_nine_adj)
+```
+
+```{r}
+zv1c <- left_join(data.frame(name=vec), zv1c, by="name")
+zv3c <- left_join(data.frame(name=vec), zv3c, by="name")
+zv5c <- left_join(data.frame(name=vec), zv5c, by="name")
+```
+
+
+Now that the GAMs have been fitted, we want to pull out the metabolites for which the value_pvalue <= 0.05.
+
+```{r}
+zv1c_sig <- zv1c %>% filter(value_pvalue<=0.05)
+zv3c_sig <- zv3c %>% filter(value_pvalue<=0.05)
+zv5c_sig <- zv5c %>% filter(value_pvalue<=0.05)
+```
+
+The code above filters the value_pvalue column to the metabolites with a p-value <= 0.05. From the results, we can see that the significant metabolites differ between visits, with one metabolite being seen as significant at visits 3 and 5 - metabolite "val" i.e. amino acid (branched chain) Valine. Visit 1 didn't yield any significant metabolites, based on this GAM model. 
+
+We now want to simulate data for each visit, and compare the p-values from the simulated data to the p-values generated using the real data found using fun_nine. For this, we need to read in the functions from files 7A_Functions_For_Primary_Metabolite_Analysis.Rmd and 8B_Data_Simulation_PVAL.R. 
+
+```{r}
+sv1cg <- sim_fun_GAM3(df_long_v1) #default number of simulations in this function = 100
+sv1c <- sim_centile_nine(sv1cg)
+sv1c <- left_join(data.frame(name=vec), sv1c, by="name")
+sc_z_v1 <- sv1c %>% mutate(real_pvalue = zv1c$value_pvalue)
+```
+
+
+```{r}
+sv3cg <- sim_fun_GAM3(df_long_v3) #default number of simulations in this function = 100
+sv3c <- sim_centile_nine(sv3cg)
+sv3c <- left_join(data.frame(name=vec), sv3c, by="name")
+sc_z_v3 <- sv3c %>% mutate(real_pvalue = zv3c$value_pvalue)
+```
+
+
+
+```{r}
+sv5cg <- sim_fun_GAM3(df_long_v5) #default number of simulations in this function = 100
+sv5c <- sim_centile_nine(sv5cg)
+sv5c <- left_join(data.frame(name=vec), sv5c, by="name")
+sc_z_v5 <- sv5c %>% mutate(real_pvalue = zv5c$value_pvalue)
+```
+
+
+Now, we want to plot the simulated min/max/median values with the real p values to see how the differ.
+
+```{r}
+sc_z_v1_long <- sc_z_v1 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v1_filt <- sc_z_v1 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v1_filt_long <- sc_z_v1_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam3vis1 <- sim_GAM3_indiv_plot(sc_z_v1_long, sc_z_v1_filt_long, zv1c_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_1_GAM3.png", plot=gam3vis1, height=7, width=15)
+
+```
+
+
+```{r}
+sc_z_v3_long <- sc_z_v3 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v3_filt <- sc_z_v3 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v3_filt_long <- sc_z_v3_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam3vis3 <- sim_GAM3_indiv_plot(sc_z_v3_long, sc_z_v3_filt_long, zv3c_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_3_GAM3.png", plot=gam3vis3, height=7, width=15)
+
+```
+
+
+```{r}
+sc_z_v5_long <- sc_z_v5 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v5_filt <- sc_z_v5 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v5_filt_long <- sc_z_v5_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam3vis5 <- sim_GAM3_indiv_plot(sc_z_v5_long, sc_z_v5_filt_long, zv5c_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_5_GAM3.png", plot=gam3vis5, height=7, width=15)
+
+```
+
+## RoC Data GAM 1 - only metabolites ##
+
+Now that we have looked at the significant metabolites for individual visits, we want to do the same for rates of change in metabolites between visits. 
+
+```{r}
+df13 <- meta_roc %>% dplyr::select(participant_id, change, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(change=="1-3")
+df_long_v13 <- df13 %>%  dplyr::select(-change) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+
+```
+
+```{r}
+df15 <- meta_roc %>% dplyr::select(participant_id, change, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(change=="1-5")
+df_long_v15 <- df15 %>%  dplyr::select(-change) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+```{r}
+df35 <- meta_roc %>% dplyr::select(participant_id, change, f72_neo_sex.y, child_adip_over, child_adip_ob, f38c_gdm, xxlvldlp:gp) %>% 
+  dplyr::rename(child_sex = f72_neo_sex.y, gdm = f38c_gdm) %>% 
+  filter(change=="3-5")
+df_long_v35 <- df35 %>%  dplyr::select(-change) %>% 
+  pivot_longer(cols=xxlvldlp:gp)
+```
+
+
+```{r}
+zv13 <- ddply(df_long_v13, .(name), fun_seven)
+zv35 <- ddply(df_long_v35, .(name), fun_seven)
+zv15 <- ddply(df_long_v15, .(name), fun_seven)
+```
+
+```{r}
+zv13 <- left_join(data.frame(name=vec), zv13, by="name")
+zv35 <- left_join(data.frame(name=vec), zv35, by="name")
+zv15 <- left_join(data.frame(name=vec), zv15, by="name")
+```
+
+
+Now that the GAMs have been fitted, we want to pull out the metabolites for which the value_pvalue <= 0.05.
+
+```{r}
+zv13_sig <- zv13 %>% filter(value_pvalue<=0.05)
+zv35_sig <- zv35 %>% filter(value_pvalue<=0.05)
+zv15_sig <- zv15 %>% filter(value_pvalue<=0.05)
+```
+
+All three RoC GAMs yielded an identical list of significant metabolites, which included "gly" and "pyr" i.e. amino acid Glycine and a glycolysis related metabolite Pyruvate. 
+
+We now want to simulate data for the rate of change in metabolites between visits, and compare the p-values from the simulated data to the p-values generated using the real data found using fun_seven. For this, we need to read in the functions from files 7A_Functions_For_Primary_Metabolite_Analysis.Rmd and 8B_Data_Simulation_PVAL.R. 
+
+```{r}
+sv13g <- sim_fun_GAM1(df_long_v13) #default number of simulations in this function = 100
+sv13 <- sim_centile_table(sv13g)
+sv13 <- left_join(data.frame(name=vec), sv13, by="name")
+s_z_v13 <- sv13 %>% mutate(real_pvalue = zv13$value_pvalue)
+```
+
+```{r}
+sv35g <- sim_fun_GAM1(df_long_v35) #default number of simulations in this function = 100
+sv35 <- sim_centile_table(sv35g)
+sv35 <- left_join(data.frame(name=vec), sv35, by="name")
+s_z_v35 <- sv35 %>% mutate(real_pvalue = zv35$value_pvalue)
+```
+
+```{r}
+sv15g <- sim_fun_GAM1(df_long_v15) #default number of simulations in this function = 100
+sv15 <- sim_centile_table(sv15g)
+sv15 <- left_join(data.frame(name=vec), sv15, by="name")
+s_z_v15 <- sv15 %>% mutate(real_pvalue = zv15$value_pvalue)
+```
+
+Now, we want to plot the simulated min/max/median values with the real p values to see how the differ.
+
+```{r}
+s_z_v13_long <- s_z_v13 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v13_filt <- s_z_v13 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v13_filt_long <- s_z_v13_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam1roc13 <- sim_GAM1_roc_plot(s_z_v13_long, s_z_v13_filt_long, zv13_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_1_and_3_GAM1.png", plot=gam1roc13, height=7, width=15)
+```
+
+
+```{r}
+s_z_v35_long <- s_z_v35 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v35_filt <- s_z_v35 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v35_filt_long <- s_z_v35_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam1roc35 <- sim_GAM1_roc_plot(s_z_v35_long, s_z_v35_filt_long, zv35_sig)
+# uni computer code for saving
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_3_and_5_GAM1.png", plot=gam1roc35, height=7, width=15)
+
+# code for saving at home
+# ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_3_and_5_GAM1.png", plot=gam1roc35, height=7, width=15)
+
+```
+
+
+```{r}
+s_z_v15_long <- s_z_v15 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v15_filt <- s_z_v15 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v15_filt_long <- s_z_v15_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam1roc15 <- sim_GAM1_roc_plot(s_z_v15_long, s_z_v15_filt_long, zv15_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_1_and_5_GAM1.png", plot=gam1roc15, height=7, width=15)
+
+```
+
+## RoC Data GAM 2 - metabolites, gdm and child sex ##
+
+
+```{r}
+zv13b <- ddply(df_long_v13, .(name), fun_eight_adj)
+zv35b <- ddply(df_long_v35, .(name), fun_eight_adj)
+zv15b <- ddply(df_long_v15, .(name), fun_eight_adj)
+```
+
+```{r}
+zv13b <- left_join(data.frame(name=vec), zv13b, by="name")
+zv35b <- left_join(data.frame(name=vec), zv35b, by="name")
+zv15b <- left_join(data.frame(name=vec), zv15b, by="name")
+```
+
+
+Now that the GAMs have been fitted, we want to pull out the metabolites for which the value_pvalue <= 0.05.
+
+```{r}
+zv13b_sig <- zv13b %>% filter(value_pvalue<=0.05)
+zv35b_sig <- zv35b %>% filter(value_pvalue<=0.05)
+zv15b_sig <- zv15b %>% filter(value_pvalue<=0.05)
+```
+
+All three RoC GAMs yielded an identical list of significant metabolites, which included "pyr" i.e. glycolysis related metabolite Pyruvate, as well as a list of _pct ratios of lipids in various sized HDL/LDL, mostly cholesterol in various forms (free cholesterol, cholesterol esters, total cholesterol etc.). 
+
+We now want to simulate data for the rate of change in metabolites between visits, and compare the p-values from the simulated data to the p-values generated using the real data found using fun_eight. For this, we need to read in the functions from files 7A_Functions_For_Primary_Metabolite_Analysis.Rmd and 8B_Data_Simulation_PVAL.R. 
+
+```{r}
+sv13bg <- sim_fun_GAM2(df_long_v13) #default number of simulations in this function = 100
+sv13b <- sim_centile_eight(sv13bg)
+sv13b <- left_join(data.frame(name=vec), sv13b, by="name")
+sb_z_v13 <- sv13b %>% mutate(real_pvalue = zv13b$value_pvalue)
+```
+
+
+```{r}
+sv35bg <- sim_fun_GAM2(df_long_v35) #default number of simulations in this function = 100
+sv35b <- sim_centile_eight(sv35bg)
+sv35b <- left_join(data.frame(name=vec), sv35b, by="name")
+sb_z_v35 <- sv35b %>% mutate(real_pvalue = zv35b$value_pvalue)
+```
+
+
+```{r}
+sv15bg <- sim_fun_GAM2(df_long_v15) #default number of simulations in this function = 100
+sv15b <- sim_centile_eight(sv15bg)
+sv15b <- left_join(data.frame(name=vec), sv15b, by="name")
+sb_z_v15 <- sv15b %>% mutate(real_pvalue = zv15b$value_pvalue)
+```
+
+
+Now, we want to plot the simulated min/max/median values with the real p values to see how the differ.
+
+```{r}
+sb_z_v13_long <- sb_z_v13 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v13_filt <- sb_z_v13 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v13_filt_long <- sb_z_v13_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam2roc13 <- sim_GAM2_roc_plot(sb_z_v13_long, sb_z_v13_filt_long, zv13b_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_1_and_3_GAM2.png", plot=gam2roc13, height=7, width=15)
+
+```
+
+
+
+```{r}
+sb_z_v35_long <- sb_z_v35 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v35_filt <- sb_z_v35 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v35_filt_long <- sb_z_v35_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam2roc35 <- sim_GAM2_roc_plot(sb_z_v35_long, sb_z_v35_filt_long, zv35b_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_3_and_5_GAM2.png", plot=gam2roc35, height=7, width=15)
+```
+
+
+```{r}
+sb_z_v15_long <- sb_z_v15 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v15_filt <- sb_z_v15 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v15_filt_long <- sb_z_v15_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam2roc15 <- sim_GAM2_roc_plot(sb_z_v15_long, sb_z_v15_filt_long, zv15b_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_1_and_5_GAM2.png", plot=gam2roc15, height=7, width=15)
+
+```
+
+## RoC Data GAM 3 - metabolites and child sex ## 
+
+
+```{r}
+zv13c <- ddply(df_long_v13, .(name), fun_nine_adj)
+zv35c <- ddply(df_long_v35, .(name), fun_nine_adj)
+zv15c <- ddply(df_long_v15, .(name), fun_nine_adj)
+```
+
+```{r}
+zv13c <- left_join(data.frame(name=vec), zv13c, by="name")
+zv35c <- left_join(data.frame(name=vec), zv35c, by="name")
+zv15c <- left_join(data.frame(name=vec), zv15c, by="name")
+```
+
+
+Now that the GAMs have been fitted, we want to pull out the metabolites for which the value_pvalue <= 0.05.
+
+```{r}
+zv13c_sig <- zv13c %>% filter(value_pvalue<=0.05)
+zv35c_sig <- zv35c %>% filter(value_pvalue<=0.05)
+zv15c_sig <- zv15c %>% filter(value_pvalue<=0.05)
+```
+
+All three RoC GAMs yielded an identical list of significant metabolites, which included "gly" and "pyr" i.e. amino acid Glycine and glycolysis related metabolite Pyruvate, as well as a list of _pct ratios of lipids in various sized HDL/LDL, mostly cholesterol in various forms (free cholesterol, cholesterol esters, total cholesterol etc.). 
+
+We now want to simulate data for the rate of change in metabolites between visits, and compare the p-values from the simulated data to the p-values generated using the real data found using fun_nine. For this, we need to read in the functions from files 7A_Functions_For_Primary_Metabolite_Analysis.Rmd and 8B_Data_Simulation_PVAL.R. 
+
+```{r}
+sv13cg <- sim_fun_GAM3(df_long_v13) #default number of simulations in this function = 100
+sv13c <- sim_centile_nine(sv13cg)
+sv13c <- left_join(data.frame(name=vec), sv13c, by="name")
+sc_z_v13 <- sv13c %>% mutate(real_pvalue = zv13c$value_pvalue)
+```
+
+
+```{r}
+sv35cg <- sim_fun_GAM3(df_long_v35) #default number of simulations in this function = 100
+sv35c <- sim_centile_nine(sv35cg)
+sv35c <- left_join(data.frame(name=vec), sv35c, by="name")
+sc_z_v35 <- sv35c %>% mutate(real_pvalue = zv35c$value_pvalue)
+```
+
+
+```{r}
+sv15cg <- sim_fun_GAM3(df_long_v15) #default number of simulations in this function = 100
+sv15c <- sim_centile_nine(sv15cg)
+sv15c <- left_join(data.frame(name=vec), sv15c, by="name")
+sc_z_v15 <- sv15c %>% mutate(real_pvalue = zv15c$value_pvalue)
+```
+
+
+Now, we want to plot the simulated min/max/median values with the real p values to see how the differ.
+
+```{r}
+sc_z_v13_long <- sc_z_v13 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v13_filt <- sc_z_v13 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v13_filt_long <- sc_z_v13_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam3roc13 <- sim_GAM3_roc_plot(sc_z_v13_long, sc_z_v13_filt_long, zv13c_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_1_and_3_GAM3.png", plot=gam3roc13, height=7, width=15)
+
+```
+
+```{r}
+sc_z_v35_long <- sc_z_v35 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v35_filt <- sc_z_v35 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v35_filt_long <- sc_z_v35_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam3roc35 <- sim_GAM3_roc_plot(sc_z_v35_long, sc_z_v35_filt_long, zv35c_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_3_and_5_GAM3.png", plot=gam3roc35, height=7, width=15)
+
+```
+
+
+```{r}
+sc_z_v15_long <- sc_z_v15 %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v15_filt <- sc_z_v15 %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v15_filt_long <- sc_z_v15_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam3roc15 <- sim_GAM3_roc_plot(sc_z_v15_long, sc_z_v15_filt_long, zv15c_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_1_and_5_GAM3.png", plot=gam3roc15, height=7, width=15)
+
+```
+
+## Plots including FDR p-values for each metabolite ##
+
+
+Now we will correct for multiple testing the p-values from real data and include them as a new column in the data set. Once this is done, we will include the fdr corrected p-values in the plots. 
+
+### GAM 1
+
+```{r}
+s_z_v1_fdr <- s_z_v1 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"))
+s_z_v3_fdr <- s_z_v3 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"))
+s_z_v5_fdr <- s_z_v5 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"))
+```
+
+
+
+```{r}
+s_z_v1_long_fdr <- s_z_v1_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v1_filt_fdr <- s_z_v1_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v1_filt_fdr_long <- s_z_v1_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+# data needed s_z_v1_long_fdr,  s_z_v1_filt_fdr_long, zv1_sig
+
+gam1vis1fdr <- srfdr_GAM1_indiv_plot(s_z_v1_long_fdr, s_z_v1_filt_fdr_long, zv1_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_1_GAM1.png", plot=gam1vis1fdr, height=7, width=15)
+
+```
+
+
+```{r}
+s_z_v3_long_fdr <- s_z_v3_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v3_filt_fdr <- s_z_v3_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v3_filt_fdr_long <- s_z_v3_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam1vis3fdr <-  srfdr_GAM1_indiv_plot(s_z_v3_long_fdr, s_z_v3_filt_fdr_long, zv3_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_3_GAM1.png", plot=gam1vis3fdr, height=7, width=15)
+
+```
+
+
+
+```{r}
+s_z_v5_long_fdr <- s_z_v5_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v5_filt_fdr <- s_z_v5_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v5_filt_fdr_long <- s_z_v5_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam1vis5fdr <-  srfdr_GAM1_indiv_plot(s_z_v5_long_fdr, s_z_v5_filt_fdr_long, zv5_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_5_GAM1.png", plot=gam1vis5fdr, height=7, width=15)
+```
+
+
+### GAM 2
+
+```{r}
+sb_z_v1_fdr <- sb_z_v1 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_gdm=p.adjust(median_gdm_pvalue, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+sb_z_v3_fdr <- sb_z_v3 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_gdm=p.adjust(median_gdm_pvalue, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+sb_z_v5_fdr <- sb_z_v5 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_gdm=p.adjust(median_gdm_pvalue, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+```
+
+```{r}
+sb_z_v1_long_fdr <- sb_z_v1_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v1_filt_fdr <- sb_z_v1_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v1_filt_fdr_long <- sb_z_v1_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam2vis1fdr <- srfdr_GAM2_indiv_plot(sb_z_v1_long_fdr, sb_z_v1_filt_fdr_long, zv1b_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_1_GAM2.png", plot=gam2vis1fdr, height=7, width=15)
+
+```
+
+
+```{r}
+sb_z_v3_long_fdr <- sb_z_v3_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v3_filt_fdr <- sb_z_v3_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v3_filt_fdr_long <- sb_z_v3_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam2vis3fdr <- srfdr_GAM2_indiv_plot(sb_z_v3_long_fdr, sb_z_v3_filt_fdr_long, zv3b_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_3_GAM2.png", plot=gam2vis3fdr, height=7, width=15)
+
+```
+
+
+```{r}
+sb_z_v5_long_fdr <- sb_z_v5_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v5_filt_fdr <- sb_z_v5_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v5_filt_fdr_long <- sb_z_v5_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam2vis5fdr <- srfdr_GAM2_indiv_plot(sb_z_v5_long_fdr, sb_z_v5_filt_fdr_long, zv5b_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_5_GAM2.png", plot=gam2vis5fdr, height=7, width=15)
+
+```
+
+### GAM 3
+
+```{r}
+sc_z_v1_fdr <- sc_z_v1 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+sc_z_v3_fdr <- sc_z_v3 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+sc_z_v5_fdr <- sc_z_v5 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+```
+
+```{r}
+sc_z_v1_long_fdr <- sc_z_v1_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v1_filt_fdr <- sc_z_v1_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v1_filt_fdr_long <- sc_z_v1_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam3vis1fdr <- srfdr_GAM3_indiv_plot(sc_z_v1_long_fdr, sc_z_v1_filt_fdr_long, zv1c_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_1_GAM3.png", plot=gam3vis1fdr, height=7, width=15)
+
+```
+
+
+```{r}
+sc_z_v3_long_fdr <- sc_z_v3_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v3_filt_fdr <- sc_z_v3_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v3_filt_fdr_long <- sc_z_v3_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam3vis3fdr <- srfdr_GAM3_indiv_plot(sc_z_v3_long_fdr, sc_z_v3_filt_fdr_long, zv3c_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_3_GAM3.png", plot=gam3vis3fdr, height=7, width=15)
+
+```
+
+
+```{r}
+sc_z_v5_long_fdr <- sc_z_v5_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v5_filt_fdr <- sc_z_v5_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v5_filt_fdr_long <- sc_z_v5_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam3vis5fdr <- srfdr_GAM3_indiv_plot(sc_z_v5_long_fdr, sc_z_v5_filt_fdr_long, zv5c_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_5_GAM3.png", plot=gam3vis5fdr, height=7, width=15)
+
+```
+
+### RoC GAM1
+
+
+```{r}
+s_z_v13_fdr <- s_z_v13 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"))
+s_z_v35_fdr <- s_z_v35 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"))
+s_z_v15_fdr <- s_z_v15 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"))
+```
+
+
+```{r}
+s_z_v13_long_fdr <- s_z_v13_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v13_filt_fdr <- s_z_v13_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v13_filt_fdr_long <- s_z_v13_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam1roc13fdr <- srfdr_GAM1_roc_plot(s_z_v13_long_fdr, s_z_v13_filt_fdr_long, zv13_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_1_3_GAM1.png", plot=gam1roc13fdr, height=7, width=15)
+
+```
+
+
+```{r}
+s_z_v35_long_fdr <- s_z_v35_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v35_filt_fdr <- s_z_v35_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v35_filt_fdr_long <- s_z_v35_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam1roc35fdr <- srfdr_GAM1_roc_plot(s_z_v35_long_fdr, s_z_v35_filt_fdr_long, zv35_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_3_5_GAM1.png", plot=gam1roc35fdr, height=7, width=15)
+
+```
+
+
+```{r}
+s_z_v15_long_fdr <- s_z_v15_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+s_z_v15_filt_fdr <- s_z_v15_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+s_z_v15_filt_fdr_long <- s_z_v15_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam1roc15fdr <- srfdr_GAM1_roc_plot(s_z_v15_long_fdr, s_z_v15_filt_fdr_long, zv15_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_1_5_GAM1.png", plot=gam1roc15fdr, height=7, width=15)
+
+```
+
+### RoC GAM2
+
+```{r}
+sb_z_v13_fdr <- sb_z_v13 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_gdm=p.adjust(median_gdm_pvalue, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+sb_z_v35_fdr <- sb_z_v35 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_gdm=p.adjust(median_gdm_pvalue, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+sb_z_v15_fdr <- sb_z_v15 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_gdm=p.adjust(median_gdm_pvalue, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+```
+
+
+```{r}
+sb_z_v13_long_fdr <- sb_z_v13_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v13_filt_fdr <- sb_z_v13_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v13_filt_fdr_long <- sb_z_v13_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam2roc13fdr <- srfdr_GAM2_roc_plot(sb_z_v13_long_fdr, sb_z_v13_filt_fdr_long, zv13b_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_1_3_GAM2.png", plot=gam2roc13fdr, height=7, width=15)
+
+```
+
+
+
+```{r}
+sb_z_v35_long_fdr <- sb_z_v35_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v35_filt_fdr <- sb_z_v35_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v35_filt_fdr_long <- sb_z_v35_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam2roc35fdr <- srfdr_GAM2_roc_plot(sb_z_v35_long_fdr, sb_z_v35_filt_fdr_long, zv35b_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_3_5_GAM2.png", plot=gam2roc35fdr, height=7, width=15)
+
+```
+
+
+```{r}
+sb_z_v15_long_fdr <- sb_z_v15_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sb_z_v15_filt_fdr <- sb_z_v15_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sb_z_v15_filt_fdr_long <- sb_z_v15_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam2roc15fdr <- srfdr_GAM2_roc_plot(sb_z_v15_long_fdr, sb_z_v15_filt_fdr_long, zv15b_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_1_5_GAM2.png", plot=gam2roc15fdr, height=7, width=15)
+
+```
+
+### RoC GAM3
+
+```{r}
+sc_z_v13_fdr <- sc_z_v13 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+sc_z_v35_fdr <- sc_z_v35 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+sc_z_v15_fdr <- sc_z_v15 %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_child_sex_male = p.adjust(median_child_sex_male_pvalue, "fdr"))
+```
+
+
+```{r}
+sc_z_v13_long_fdr <- sc_z_v13_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v13_filt_fdr <- sc_z_v13_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v13_filt_fdr_long <- sc_z_v13_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam3roc13fdr <- srfdr_GAM3_roc_plot(sc_z_v13_long_fdr, sc_z_v13_filt_fdr_long, zv13c_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_1_3_GAM3.png", plot=gam3roc13fdr, height=7, width=15)
+
+```
+
+
+```{r}
+sc_z_v35_long_fdr <- sc_z_v35_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v35_filt_fdr <- sc_z_v35_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v35_filt_fdr_long <- sc_z_v35_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam3roc35fdr <- srfdr_GAM3_roc_plot(sc_z_v35_long_fdr, sc_z_v35_filt_fdr_long, zv35c_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_3_5_GAM3.png", plot=gam3roc35fdr, height=7, width=15)
+
+```
+
+
+```{r}
+sc_z_v15_long_fdr <- sc_z_v15_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sc_z_v15_filt_fdr <- sc_z_v15_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sc_z_v15_filt_fdr_long <- sc_z_v15_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam3roc15fdr <- srfdr_GAM3_roc_plot(sc_z_v15_long_fdr, sc_z_v15_filt_fdr_long, zv15c_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_1_5_GAM3.png", plot=gam3roc15fdr, height=7, width=15)
+
+```
+
+# GAM4 - Interaction
+
+### Indiv Sig
+
+```{r}
+zv1d <- ddply(df_long_v1, .(name), fun_inter_adj)
+zv1d <- left_join(data.frame(name=vec), zv1d, by="name")
+zv1d_sig <- zv1d %>% filter(`value:gdm_pvalue`<=0.05)
+```
+
+```{r}
+zv3d <- ddply(df_long_v3, .(name), fun_inter_adj)
+zv3d <- left_join(data.frame(name=vec), zv3d, by="name")
+zv3d_sig <- zv3d %>% filter(`value:gdm_pvalue`<=0.05)
+```
+
+
+### Visit 5
+
+```{r}
+zv5d <- ddply(df_long_v5, .(name), fun_inter_adj)
+zv5d <- left_join(data.frame(name=vec), zv5d, by="name")
+zv5d_sig <- zv5d %>% filter(`value:gdm_pvalue`<=0.05)
+```
+
+
+```{r}
+sv5dg<- sim_fun_GAM4(df_long_v5)
+sv5d <- sim_centile_inter(sv5dg)
+sv5d <- left_join(data.frame(name=vec), sv5d, by="name")
+s_z_v5d <- sv5d %>% mutate(real_pvalue = zv5d$`value:gdm_pvalue`)
+```
+
+```{r}
+sd_z_v5_long <- s_z_v5d %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sd_z_v5_filt <- s_z_v5d %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sd_z_v5_filt_long <- sd_z_v5_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam4vis5 <- sim_inter_indiv_plot(sd_z_v5_long, sd_z_v5_filt_long, zv5d_sig)
+ggsave(file="Simulated_vs_real_pvals_visit_5_GAM4.png", plot=gam4vis5, height=7, width=15)
+
+```
+
+Post FDR correction:
+
+```{r}
+sd_z_v5_fdr <- s_z_v5d %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_gdm=p.adjust(median_gdm_pvalue, "fdr"))
+```
+
+```{r}
+sd_z_v5_long_fdr <- sd_z_v5_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sd_z_v5_filt_fdr <- sd_z_v5_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sd_z_v5_filt_fdr_long <- sd_z_v5_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam4vis5fdr <-  srfdr_inter_indiv_plot(sd_z_v5_long_fdr, sd_z_v5_filt_fdr_long, zv5d_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_visit_5_GAM4.png", plot=gam4vis5fdr, height=7, width=15)
+
+```
+
+### RoC Sig
+
+```{r}
+zv13d <- ddply(df_long_v13, .(name), fun_inter_adj)
+zv13d <- left_join(data.frame(name=vec), zv13d, by="name")
+zv13d_sig <- zv13d %>% filter(`value:gdm_pvalue`<=0.05)
+```
+
+```{r}
+zv35d <- ddply(df_long_v35, .(name), fun_inter_adj)
+zv35d <- left_join(data.frame(name=vec), zv35d, by="name")
+zv35d_sig <- zv35d %>% filter(`value:gdm_pvalue`<=0.05)
+```
+
+### RoC15
+
+```{r}
+zv15d <- ddply(df_long_v15, .(name), fun_inter_adj)
+zv15d <- left_join(data.frame(name=vec), zv15d, by="name")
+zv15d_sig <- zv15d %>% filter(`value:gdm_pvalue`<=0.05)
+```
+
+
+```{r}
+sv15dg<- sim_fun_GAM4(df_long_v15)
+sv15d <- sim_centile_inter(sv15dg)
+sv15d <- left_join(data.frame(name=vec), sv15d, by="name")
+s_z_v15d <- sv15d %>% mutate(real_pvalue = zv15d$`value:gdm_pvalue`)
+```
+
+```{r}
+sd_z_v15_long <- s_z_v15d %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sd_z_v15_filt <- s_z_v15d %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sd_z_v15_filt_long <- sd_z_v15_filt %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+
+gam4vis15 <- sim_inter_roc_plot(sd_z_v15_long, sd_z_v15_filt_long, zv15d_sig)
+ggsave(file="Simulated_vs_real_pvals_for_RoC_visit_1_and_5_GAM4.png", plot=gam4vis15, height=7, width=15)
+
+```
+
+Post FDR correction:
+
+```{r}
+sd_z_v15_fdr <- s_z_v15d %>% mutate(fdr_pvalue = p.adjust(real_pvalue, "fdr"), fdr_5th = p.adjust(fifth_pctile, "fdr"), fdr_95th = p.adjust(ninetyfifth_pctile, "fdr"), fdr_median = p.adjust(median, "fdr"), fdr_median_gdm=p.adjust(median_gdm_pvalue, "fdr"))
+```
+
+```{r}
+sd_z_v15_long_fdr <- sd_z_v15_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+sd_z_v15_filt_fdr <- sd_z_v15_fdr %>% filter(real_pvalue < fifth_pctile | real_pvalue > ninetyfifth_pctile) 
+sd_z_v15_filt_fdr_long <- sd_z_v15_filt_fdr %>% 
+  pivot_longer(fifth_pctile:ncol(.), names_to="type", values_to="value") 
+
+gam4vis15fdr <-  srfdr_inter_roc_plot(sd_z_v15_long_fdr, sd_z_v15_filt_fdr_long, zv15d_sig)
+ggsave(file="Simulated_vs_real_vs_fdr_RoC_1_5_GAM4.png", plot=gam4vis15fdr, height=7, width=15)
+
+```
+
+
+# Finding the metabolites with significant association to childhood adiposity
+
+The code for these is in the first few sections (before FDR). Here, we are pulling the appropriate code to find the metabolites.
+
+### GAM1
+
+```{r}
+zv1
+zv3
+zv5
+zv1_sig 
+zv3_sig 
+zv5_sig 
+```
+
+### GAM2
+
+```{r}
+zv1b
+zv3b
+zv5b
+zv1b_sig 
+zv3b_sig 
+zv5b_sig 
+```
+
+### GAM3
+
+```{r}
+zv1c
+zv3c
+zv5c
+zv1c_sig 
+zv3c_sig 
+zv5c_sig 
+```
+
+### GAM4
+
+```{r}
+zv1d
+zv3d
+zv5d
+zv1d_sig 
+zv3d_sig 
+zv5d_sig 
+```
+
+
+### RoC GAM1
+
+```{r}
+zv13
+zv35
+zv15
+zv13_sig 
+zv35_sig 
+zv15_sig
+```
+
+### RoC GAM2
+
+```{r}
+zv13b
+zv35b
+zv15b
+zv13b_sig 
+zv35b_sig 
+zv15b_sig 
+```
+
+### RoC GAM3
+
+```{r}
+zv13c
+zv35c
+zv15c 
+zv13c_sig 
+zv35c_sig 
+zv15c_sig 
+```
+
+### RoC GAM4
+
+```{r}
+zv13d
+zv35d
+zv15d 
+zv13d_sig 
+zv35d_sig 
+zv15d_sig 
+```
+
+
+```{r}
+summary(zv3b)
+```
+
+
+```{r}
+zv15pvalsig <- zv15_sig %>% mutate(gam1 = value_pvalue) %>% select(name, gam1)
+zvb15pvalsig <- zv15b_sig %>% mutate(gam2 = value_pvalue) %>% select(name, gam2)
+zvc15pvalsig <- zv15c_sig %>% mutate(gam3 = value_pvalue) %>% select(name, gam3)
+zvd15pvalsig <- zv15d_sig %>% mutate(gam4 = `value:gdm_pvalue`) %>% select(name, gam4)
+
+zv15_full_sig <- join_all(list(zv15pvalsig, zvb15pvalsig, zvc15pvalsig, zvd15pvalsig), by = 'name', type = 'full')
+
+zv15_full_sig_2 <- zv15_full_sig[order(match(rownames(zv15_full_sig), vec)),, drop=FALSE]
+
+zv15_full_sig_2 <- left_join(data.frame(name=vec), zv15_full_sig_2, by="name")
+
+zv15_full_sig_2 <- filter(zv15_full_sig_2, rowSums(is.na(zv15_full_sig_2)) != 4)
+
+write.csv(zv15_full_sig_2, "I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\R Code Files\\RoC_15_Sig_Meta.csv", row.names = FALSE)
+
+```
+
+zv15_full_sig_2 gives a dataframe of all significant metabolites for all 4 gams fitted, in order as in the metabolome dictionary, as well as which as significant for which gams (NAs show that the specific metabolite is not significant in the GAM).
+
+# Evaluation of results
+
+The results gained from the individual visit GAM comparison showed that the significant metabolites at visit 3 were indentical, irrespective of the GAM being fitted, and the same was seen for visit 5. The metabolites differed for visit 1 between the different GAM models being fitted. The metabolite seen across all visits for all GAMs (with one exception) was "val" i.e. Valine, which is one of 3 branched chain amino acids (BCAAs). BCAAs stimulate the building of protein in muscle and possibly reduce muscle breakdown.
+
+The results gained from the RoC in metabolites between visits showed that the significant metabolites were identical over the course of pregnancy (between visits 1 and 3, 3 and 5, and 1 and 5), with the significant metabolites being mostly Glycine and Pyruvate, as well as lists of _pct ratios of lipids in various sized HDL/LDL, mostly cholesterol in various forms (free cholesterol, cholesterol esters, total cholesterol etc.).
+
+
+
+
+
+```{r}
+save.image(file = "8_sigmetcomp_workspace.RData")
+```
+

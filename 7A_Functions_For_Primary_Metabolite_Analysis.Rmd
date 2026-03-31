@@ -1,0 +1,146 @@
+---
+title: "Functions for Metabolite Exploration"
+output: html_document
+---
+
+The functions in this file are used in file 7_Primary_Metabolite_Analysis.Rmd to perform functions on the data and create files with plots of the data to explore each metabolite and its distributions using glm and gam models.
+
+```{r}
+fun_one <- function(df1){
+  xmean <- mean(df1$value)
+  xmean
+} # this function takes the values of the metabolite xxlvldlp and finds and outputs the mean of the values
+
+```
+
+```{r}
+fun_two <- function(df1){
+  z <- glm(child_adip_over=="Yes" ~ value + gdm + child_sex, data = df1, family=binomial)
+  summary(z)$coefficients["value",]
+}
+```
+
+This function (fun_two) creates a glm (binary logistic regression) with metabolite values, gdm and child_sex as explanatory variables, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). 
+
+```{r}
+fun_three <- function(df1){
+  z <- glm(child_adip_over=="Yes" ~ value + gdm + child_sex, data = df1, family=binomial)
+  z_out <- c(summary(z)$coefficients["value",],summary(z)$coefficients["gdm",],summary(z)$coefficients["child_sexMale",])
+  z_names <- c("est","se","zvalue","pvalue")
+  z_names <- c(paste("value",z_names, sep="_"),paste("gdm",z_names, sep="_"),paste("child_sex_male",z_names, sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+```{r}
+fun_four <- function(df1){
+  g1 <- df1 %>% ggplot(aes(x=value)) + geom_histogram()
+  g2 <- df1 %>% ggplot(aes(x=value, y=child_adip_over)) + geom_boxplot()
+  g3 <- df1 %>% ggplot(aes(x=value, y=child_adip_ob)) + geom_boxplot()
+  g4 <- df1 %>% mutate(gdm=factor(gdm)) %>% ggplot(aes(x=value, y=gdm)) + geom_boxplot()
+  g5 <- df1 %>% ggplot(aes(x=value, y=child_sex)) + geom_boxplot()
+  gridExtra::grid.arrange(g1,g2,g3,g4,g5, ncol=2, top=textGrob(unique(df1$name), gp=gpar(fontsize=20, font=2)))
+}
+```
+
+The function fun_four creates 5 graphs for inputted data frame: a histogram of values per metabolite, a boxplot of metabolite values according to child adiposity, boxplot of metabolite values according to gdm category and a boxplot of metabolite values according to child sex.
+
+```{r}
+fun_five <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ s(value), data=df1, family=binomial)
+  plot(z, main = unique(df1$name))
+}
+```
+
+This function (fun_five) creates a gam binary logistic regression with metabolite values, smoothed, and outputs the coefficients of value (ie. est, se, z value and pvalue), using the inputted data frame (can be either df1 example or full dataframe df_long). We look at the plot of the gam to look for evidence of curviture (non-linearity). 
+
+```{r}
+fun_six <- function(df1){
+  z <- mgcv::gam(child_adip_over=="No" ~ s(value), data=df1, family=binomial)
+  plot(z, main = unique(df1$name))
+  
+}
+```
+
+fun_six is the same as fun_five, but it uses the dependent variable outcome of "No" for childhood adiposity overweight and above.
+
+```{r}
+fun_seven <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ s(value), data=df1, family=binomial)
+  #summary(z)$s.table[,4]
+  z_out <- c(summary(z)$s.table[,c(3,4)])
+  z_names <- c("Fvalue","pvalue")
+  z_names <- c(paste("value",z_names, sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+The above function pulls out the F value and p-value for all the metabolites using GAM model.
+
+
+```{r}
+fun_eight <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ s(value) + gdm + child_sex, data=df1, family=binomial)
+  #summary(z)$s.table
+  z_out <- c(summary(z)$s.table[,c(3,4)],summary(z)$p.table["gdm",],summary(z)$p.table["child_sexMale",])
+  z_names <- c("chi.sq","pvalue", "est", "stderr", "zvalue", "pvalue", "est", "stderr", "zvalue", "pvalue")
+  z_names <- c(paste("value",z_names[c(1,2)], sep="_"),paste("gdm",z_names[c(3:6)], sep="_"),paste("child_sex_male",z_names[c(7:10)], sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+fun_eight does the same as for fun_seven, but the GAM in fun_eight include terms for gdm and child_sex clasifications.
+
+```{r}
+fun_nine <- function(df1){
+  z <- mgcv::gam(child_adip_over=="Yes" ~ s(value) + child_sex, data=df1, family=binomial)
+  #summary(z)$s.table
+  z_out <- c(summary(z)$s.table[,c(3,4)],summary(z)$p.table["child_sexMale",])
+  z_names <- c("chi.sq","pvalue", "est", "stderr", "zvalue", "pvalue")
+  z_names <- c(paste("value",z_names[c(1,2)], sep="_"), paste("child_sex_male",z_names[c(3:6)], sep="_"))
+  names(z_out) <- z_names
+  z_out
+  }
+```
+
+fun_nine does the same as for fun_seven, but the GAM in fun_nine includes term for child_sex clasifications.
+
+```{r}
+fun_ten <- function(df1){
+   z1 <- mgcv::gam(child_adip_over=="Yes" ~ s(value), data=df1, family=binomial)
+   z2 <- mgcv::gam(child_adip_over=="Yes" ~ s(value) + gdm + child_sex, data=df1, family=binomial)
+   z3 <- mgcv::gam(child_adip_over=="Yes" ~ s(value) + child_sex, data=df1, family=binomial)
+   par(mfrow=c(2,2))
+   mgcv::qq.gam(z1,cex=3, main="a)")
+   mgcv::qq.gam(z2,cex=3, main="b)")
+   mgcv::qq.gam(z3,cex=3, main="c)")
+}
+```
+
+```{r}
+fun_eleven <- function(df1){
+   z1 <- mgcv::gam(child_adip_over=="Yes" ~ s(value), data=df1, family=binomial)
+   z2 <- mgcv::gam(child_adip_over=="Yes" ~ s(value) + gdm + child_sex, data=df1, family=binomial)
+   z3 <- mgcv::gam(child_adip_over=="Yes" ~ s(value) + child_sex, data=df1, family=binomial)
+   p1 <- mgcv::gam.check(z1)
+   p2 <- mgcv::gam.check(z2)
+   p3 <- mgcv::gam.check(z3)
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

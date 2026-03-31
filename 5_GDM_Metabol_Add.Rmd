@@ -1,0 +1,50 @@
+---
+title: "Adding GDM To Metabolite Data"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+metabol <- read.csv( "metabol_raw_data.csv")
+metabol <- metabol[,-c(2,4,5,234:259,262,263)]
+```
+
+
+```{r}
+summary(as.factor(metabol$Category))
+```
+
+```{r}
+library(haven)
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+upbeat <- read_dta("UPBEAT_dataset_to_share_Dygas_078.dta")
+upbeat_gdm <- upbeat[,c("participant_id", "f38c_gdm")]
+
+```
+
+
+```{r}
+library(dplyr)
+meta_gdm <- merge(metabol, upbeat_gdm, by="participant_id")
+summary(as.factor(meta_gdm$f38c_gdm))
+
+```
+
+```{r}
+library(tidyr)
+meta_gdm %>% drop_na(f38c_gdm) -> meta_gdm_na
+length(unique(meta_gdm_na$participant_id))
+summary(as.factor(meta_gdm_na$Category))
+
+```
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+write.csv(meta_gdm_na, "metabol_3point_gdm_data.csv", row.names= F)
+```
+
+

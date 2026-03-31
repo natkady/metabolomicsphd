@@ -1,0 +1,41 @@
+---
+title: "Metabolite Data Missingness"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+metabol <- read.csv( "metabol_raw_data.csv")
+metabol <- metabol[,-c(2,4,5,234:259,262,263)]
+```
+
+
+```{r}
+summary(as.factor(metabol$Category))
+```
+
+In this markdown file, we will explore the missingness of the data.
+
+```{r}
+library(naniar)
+library(tidyverse)
+```
+
+```{r}
+names(which(colSums(is.na(metabol[,3:230])) > 0))
+metabol %>% select_if(~any(is.na(.))) %>% gg_miss_var()
+```
+
+```{r}
+max(metabol$xxlvldlc_pct)
+summary(metabol$xxlvldlc_pct)
+summary(metabol$lvldlce_pct)
+summary(metabol$lvldlc_pct)
+summary(metabol$xlvldltg_pct)
+```
+

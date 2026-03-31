@@ -1,0 +1,49 @@
+---
+title: "Metabolite Data Adjustments"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+metabol <- read.csv("metabol_rates_of_change.csv")
+```
+
+We want to add the binary GDM outcomes for the participants i.e., whether the mothers were diagnosed with GDM during pregnancy. For this we need the variables participant_id and f38c_gdm from the UPBEAT dataset. 
+
+As well as adding the UPBEAT GDM outcome variable, we need to standardise the % changes of metabolites for visits using std. dev. as some metabolites have broader ranges than others. By standardising the data, it'll be simpler to quantify, explain and compare changes of metabolites for all participants. This, in turn, will help with building logisitic regressions for the metabolites. 
+
+```{r, echo=FALSE}
+scaled_metabol <- scale(metabol[,c(3:230)])
+```
+
+This scales the metabolite values found in the metabolite data. Now we need to add the scaled metabolite data to the metadata associated with the metabolites.
+
+```{r}
+metabol_meta <- metabol[,c(1,2, 231:235)]
+metabol_sd <- cbind(metabol_meta, scaled_metabol)
+```
+
+We need to check how many rows in the data contain NAs.
+
+```{r, echo=FALSE}
+sum(!complete.cases(metabol_sd))
+```
+
+```{r}
+library(tidyverse)
+metabol_sd %>% group_by(change) %>% summarise_at(vars(-c(participant_id, f72_neo_sex.y, mbodpodbmi, Category, child_adip_over, child_adip_ob)),~sum(!complete.cases(.)))
+```
+
+
+```{r}
+metabol_sd %>% group_by(change) %>% count(complete.cases(.)) %>% filter(`complete.cases(.)`==TRUE)
+```
+
+
+
+

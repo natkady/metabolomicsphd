@@ -1,0 +1,172 @@
+---
+title: "MVI For Metabolite Data With GDM"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:/Documents/PhD files/Kim/UPBEAT/Data Files")
+```
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+gdm_meta <- read.csv("metabol_3point_gdm_data.csv")
+
+```
+
+
+```{r}
+library(zoo)
+which(is.na(gdm_meta$xxlvldltg_pct), arr.ind=TRUE) #finding NAs for single _pct variable
+```
+
+
+```{r}
+x <- NULL
+for(i in 1:15){
+  x[[i]] <- which(is.na(gdm_meta[,100+i]), arr.ind=TRUE)
+}
+
+```
+The above code pulls out the indices at which an NA occurs in _pct variables found in markdown file 4. These are the indices at which we need to replace the NAs by calculating the _pct values using existing values in the associated variables within the data set. The variables are at columns 101 - 115. 
+
+```{r}
+library(agrmt)
+minnz(gdm_meta$xxlvldlp)
+gdm_meta_NApct_removed <- gdm_meta[,-c(101:115)] #removing _pct variables with NAs. 
+```
+
+
+```{r}
+library(tidyverse)
+# gdm_meta_NApct_removed %>% mutate_at(vars(-c(participant_id,visno,serumc:f38c_gdm)),~case_when(!is.na(.) & .==0~minnz(.)/10,TRUE~.)) -> gdm_meta_0
+
+gdm_meta_NApct_removed %>% mutate_at(vars(-c(participant_id,visno,serumc:f38c_gdm)), ~case_when(!is.na(.) & .==0~minnz(.)/10,TRUE~.+(minnz(.)/10)))-> gdm_meta_0
+
+```
+We removed the _pct variables which included NAs. As these were removed, there is a possiblity of removing the remaining _pct variables. The code above replaces the 0.00000 values within the metabolite variables with the minimum non-zero value of the variable divided by 10.  
+
+Need to add _pct variables back. 
+
+```{r}
+library(dplyr)
+pct_meta <- gdm_meta[,101:115]
+gdm_meta_pct <- cbind(gdm_meta_0, pct_meta)
+```
+
+
+
+```{r}
+
+names1 <- gdm_meta_pct %>% select(-c(participant_id:f38c_gdm)) %>% colnames()
+names2 <- data.frame(names=names1) %>% 
+  separate(names,sep="_",into=c("names",NA)) %>%
+  pull(names)
+names3 <- data.frame(name=names2)%>% 
+  mutate(names=case_when(str_detect(name,"xx")~"xxlvldll",
+                         !str_detect(name,"x")~"lvldll",
+                         TRUE~"xlvldll")) %>%
+  pull(names)
+
+test1 <- map(.x=names3,~rename(gdm_meta_pct,div=.x)) %>% 
+  map2(.x=.,.y=names2,~mutate_at(.x,vars(.y),~round(./div,5)*100)) %>%
+  map2(.x=.,.y=names2,~select(.x,all_of(.y))) %>%
+  map2(.x=.,.y=names1,~set_names(.x,.y)) %>%
+  bind_cols() 
+
+gdm_meta_pct %>% select(-all_of(names1)) %>% bind_cols(test1) -> mvi_pct_meta
+remove(names1,names2,names3)
+
+```
+
+The above code calculates the percentages for the _pct variables which include NAs from the available variables within the data set. All calculations were done from existing values and variables in the data set.
+
+The next step is to impute MVI for the remaining metabolites with NAs. The method used for this will be kNN (as with the YPOPS data). Following MVI, the data will need to be transformed, scaled and normalised. As the 0s have been imputed as minimum values divided by 10, the method of transformation used will be zero-skewness log transformation. For normalisation, we will use PQN, as was done with the YPOPS data. 
+
+First, the _pct computed variables need to be rearranged and moved the the rest of the metabolites. 
+
+```{r}
+mvi_meta <- mvi_pct_meta[,c(1:100, 222:236, 101:221)] # rearranged data
+```
+
+Here, we will compute kNN for the NAs present in the remaining metabolites.
+
+```{r}
+library(caret)
+```
+
+```{r}
+library(RANN)
+preProcValues <- preProcess(mvi_meta %>%
+                              dplyr::select(xxlvldlp:gp),
+                            method = c("knnImpute"),
+                            k = 15,
+                            knnSummary = mean)
+impute_mvi_meta_info <- predict(preProcValues, mvi_meta, na.action = na.pass)
+```
+
+The k value in the above code is ~ close to the root number of variables. 
+
+```{r}
+procNames <-data.frame(col=names(preProcValues$mean), mean = preProcValues$mean, sd = preProcValues$std)
+for (i in procNames$col){
+  impute_mvi_meta_info[i] <- impute_mvi_meta_info[i]*preProcValues$std[i]+preProcValues$mean[i] 
+}
+```
+
+```{r}
+library(naniar)
+library(tidyverse)
+impute_mvi_meta_info %>% select_if(~any(is.na(.))) 
+```
+
+Now that the NAs have been imputed using kNN, we need to rename the data set, and scale, normalise and transform the data. 
+
+```{r}
+meta_post_mvi <- impute_mvi_meta_info
+```
+
+```{r}
+remotes::install_github("ricoderks/Rcpm")
+#install.packages('IRkernel')
+#devtools::install_github("ricoderks/Rcpm")
+library(Rcpm)
+library(MetabolAnalyze)
+```
+
+```{r}
+meta_scale <- scaling(meta_post_mvi[,3:230], type = "pareto") # metabolite data scaled using pareto
+meta_norm <- pqn(meta_scale, n="mean")
+meta_norm <- as.data.frame(meta_norm) # data normalised using pqn
+meta_transform <- log(meta_norm) # data log-transformed (to complete zero-skewness log transformation)
+```
+
+The code above scaled, normalised and transformed the metabolite data. Now, we need to join the permuted metabolite data to the meta-data from the data mvi_meta.
+
+```{r}
+meta_clean <- cbind(meta_post_mvi[,c(1,2,231:236)], meta_transform)
+```
+
+The data set meta_clean now contains the cleaned and permuted data, ready for primary and secondary analysis. The data needs to be saved as a new data set for further analysis in following R Markdown files.
+
+```{r}
+setwd("I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+write.csv(meta_clean, "metabolite_clean_data.csv", row.names= F)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
