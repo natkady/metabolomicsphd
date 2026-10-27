@@ -77,6 +77,16 @@ Files 7_, 7A_, and 7B_ should be run concurrently i.e. 7A_ and 7B_ should be run
 
 ## GEO
 
-The GEO shiny app contains 2 R files: geo_analysis.R and diff_cell.R. The main code for the app is within geo_analysis.R, with diff_cell.R containing the functions needed to produce analyses and graphs within geo_analysis.R. For geo_analysis.R to run, JAVA2 must be installed on the local device, and diff_cell.R must be read first.
+The GEO shiny app contains 2 R files: 
+
+geo_analysis.R 
+
+diff_cell.R. 
+
+The main code for the app is within geo_analysis.R, with diff_cell.R containing the functions needed to produce analyses and graphs within geo_analysis.R. 
+
+For testing of the GEO accession data analysis app, please use the files: test-analysis-functions.R, test-app.R and test-validation-geo2r.R
+
+For help with set up, please see helper=setup.R.
 
 
