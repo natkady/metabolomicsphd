@@ -6,7 +6,22 @@
 #
 #    http://shiny.rstudio.com/
 #
+# To run: open this file in RStudio and click 'Run App', or run
+#    shiny::runApp("path/to/geo_analysis.R")
+# Any missing R packages are installed automatically the first time the app is run.
+# The 'Top Gene Pathways' tab also needs Java 8 or newer installed (see the tab for details).
+# Tests: testthat::test_dir("tests/testthat")
+#
 
+required_pkgs <- c("shiny", "plyr", "tidyverse", "readr", "cli", "GEOquery", "shinyWidgets",
+                   "shinycssloaders", "limma", "dplyr", "stringr", "DescTools", "ggplot2",
+                   "gridExtra", "umap", "pathfindR", "tibble", "ropls", "Biobase", "DT",
+                   "shinyFiles", "data.table")
+missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_pkgs) > 0) {
+  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+  BiocManager::install(missing_pkgs, update = FALSE, ask = FALSE)
+}
 
 library(shiny)
 library(plyr)
@@ -26,8 +41,8 @@ library(DescTools)
 library(ggplot2)
 library(gridExtra)
 library(umap)
-library(maptools)
-library(pathfindR)
+# pathfindR is not attached here: attaching it fails without Java and would stop the whole app.
+# Its functions are called as pathfindR::... in diff_cell.R only when the pathway tab is used.
 library(tibble)
 library(ropls)
 library(Biobase)
@@ -36,6 +51,9 @@ library(shinyFiles)
 library(data.table)
 
 source("diff_cell.R")
+
+app_version <- "1.1.0"
+java_available <- nzchar(Sys.which("java"))  # pathfindR needs Java on the PATH that R sees
 
 #### UI ####
 
@@ -49,6 +67,9 @@ ui <- fluidPage(
     # SIDEBAR 
     sidebarLayout(
         sidebarPanel(
+            helpText("Enter a GEO Series accession (e.g. GSE148426) and press 'Load Data'.",
+                     "Then choose a classification variable and press 'Run Analysis'.",
+                     "Loading a new accession clears all previous results."),
             textInput(inputId = "geoacc", 
                       label = "GEO Accession Code",
                       value = ""),
@@ -70,23 +91,41 @@ ui <- fluidPage(
         mainPanel(
           tabsetPanel(
             tabPanel("Phenotype Data", 
-                     DTOutput("geodata"),
+                     helpText("Sample information for the loaded series, with GEO administrative columns removed.",
+                              "Variables with two or more groups can be chosen as the classification variable in the side bar."),
+                     DTOutput("geodata") %>% withSpinner(),
                      br(),
                      downloadButton("phenotabsave", "Download Data Table")),
             tabPanel("Top Gene Expression Table", 
-                     DTOutput("genetables"),
+                     helpText("limma results for the pairwise comparison selected in the side bar, ordered by the B statistic",
+                              "(log-odds that the gene is differentially expressed). logFC is the log2 fold change of the first",
+                              "group relative to the second group in the comparison name (e.g. A-B means A minus B).",
+                              "adj.P.Val is the Benjamini-Hochberg adjusted p-value, i.e. the false discovery rate (FDR)."),
+                     DTOutput("genetables") %>% withSpinner(),
                      br(),
                      downloadButton("geneexpsave", "Download Data Table")),
             tabPanel("Histogram of P-Values", 
-                     plotOutput("genehist"),
+                     helpText("Distribution of Benjamini-Hochberg adjusted p-values (FDR) for all genes, as in GEO2R.",
+                              "With two groups this is the single comparison; with three or more groups it is the moderated",
+                              "F-test across all groups. A large peak near 0 indicates many differentially expressed genes."),
+                     plotOutput("genehist") %>% withSpinner(),
                      downloadButton("histsave", "Download Graph")),
             tabPanel("Q-Q Plot", 
-                     plotOutput("geneqq"), 
+                     helpText("The moderated t-statistic of every gene with a valid test result is plotted against the",
+                              "quantiles of a Student's t-distribution with the same degrees of freedom. If most genes are",
+                              "not differentially expressed, their moderated t-statistics follow this t-distribution, so the",
+                              "points lie on the diagonal; points that leave the line at either end are differentially expressed",
+                              "genes. This checks the test statistics, not whether the expression data are normally distributed.",
+                              "With three or more groups the first comparison is shown."),
+                     plotOutput("geneqq") %>% withSpinner(), 
                      br(),
                      downloadButton("qqplotsave", "Download Graph")),
             tabPanel("Volcano Plots", 
+                     helpText("Each point is a gene: log2 fold change against -log10(p-value). Genes are labelled UP or DOWN",
+                              "when their Benjamini-Hochberg adjusted p-value is below the chosen false discovery rate (FDR)",
+                              "threshold. 0.05 is a common choice, but any threshold is a convention, so choose one to suit your study."),
                      fluidRow(uiOutput("volcanopval")),
-                     plotOutput("genevolcano"),
+                     plotOutput("genevolcano") %>% withSpinner(),
                      br(),
                      downloadButton("volplotsave", "Download Graph"), 
                      br(),
@@ -94,8 +133,10 @@ ui <- fluidPage(
                      br(),
                      downloadButton("voltabsave", "Download Data Table")),
             tabPanel("Mean Difference Plots", 
+                     helpText("Each point is a gene: log2 fold change against average log2 expression. Genes are labelled UP",
+                              "or DOWN using the chosen false discovery rate (FDR) threshold, as in the volcano plot."),
                      fluidRow(uiOutput("meandiffpval")), 
-                     plotOutput("genemd"),
+                     plotOutput("genemd") %>% withSpinner(),
                      br(),
                      downloadButton("mdplotsave", "Download Graph"),
                      br(),
@@ -103,10 +144,19 @@ ui <- fluidPage(
                      br(),
                      downloadButton("mdtabsave", "Download Data Table")),
             tabPanel("Density and Intensity Plot", 
-                     plotOutput("genedense"),
+                     helpText("Distribution of expression values in each sample, coloured by group. Similar curves suggest",
+                              "the samples are comparably normalised; a clearly shifted curve can indicate a problem sample."),
+                     plotOutput("genedense") %>% withSpinner(),
                      br(),
                      downloadButton("disave", "Download Graph")),
             tabPanel("UMAP",
+                     helpText("UMAP is a non-linear dimension reduction that places samples with similar expression profiles",
+                              "close together. The layout depends strongly on the number of neighbours (small values emphasise",
+                              "local structure, large values global structure), and distances between clusters are not directly",
+                              "meaningful, so clusters should not be read as evidence of biological relatedness on their own.",
+                              "The default of 15 neighbours matches GEO2R.",
+                              tags$a(href = "https://pair-code.github.io/understanding-umap/", target = "_blank",
+                                     "Understanding UMAP")),
                      fluidRow(uiOutput("neighbours")),
                      br(),
                      textOutput("umaperr"),
@@ -114,10 +164,16 @@ ui <- fluidPage(
                      br(),
                      downloadButton("umapsave", "Download Graph")),
             tabPanel("Mean Variance Trend", 
+                     helpText("Square root of the residual standard deviation of each gene against its average log2",
+                              "expression (limma plotSA). The line is the mean-variance trend used by limma's empirical",
+                              "Bayes moderation of the gene variances."),
                      plotOutput("genemeanvar"),
                      br(),
                      downloadButton("mvsave", "Download Graph")),
             tabPanel("Top Gene Pathways",
+                     helpText("Pathway enrichment using active subnetworks (pathfindR), based on the gene identifiers and",
+                              "adjusted p-values. Requires Java 8 or newer. Gene identifiers must be gene symbols to match the",
+                              "protein interaction network, so datasets whose rows are probe IDs may find no match."),
                      fluidRow(uiOutput("geneset"),
                               br(),
                               uiOutput("paths")),
@@ -132,10 +188,19 @@ ui <- fluidPage(
                      downloadButton("pathtabsave", "Download Data Table")),
             tabPanel("PLS-DA Analysis",
                      br(),
+                     helpText("Partial least squares discriminant analysis (ropls) of the expression data, using the",
+                              "classification variable as the response. If a significant model is found the sample score plot",
+                              "is shown; otherwise the model overview is shown."),
                      fluidRow(uiOutput("plsdabutt")),
                      plotOutput("geneplsda"),
                      br(),
-                     downloadButton("plsdasave", "Download Graph"))
+                     downloadButton("plsdasave", "Download Graph")),
+            tabPanel("About",
+                     br(),
+                     helpText("App version, dataset, settings and software versions for the current analysis.",
+                              "Download this file and keep it with your results so the analysis can be reproduced."),
+                     verbatimTextOutput("about"),
+                     downloadButton("aboutsave", "Download Analysis Details"))
           )
            
         )
@@ -196,7 +261,33 @@ server <- function(input, output, session) {
       }
     )
   
+  geo_info <- reactiveVal(NULL)  # accession and download time, for the About tab
+  
   observeEvent(input$button, { 
+    geo_info(list(accession = input$geoacc, loaded = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")))
+    
+    # Clear all results from a previous analysis, so the app never shows results for an
+    # earlier accession next to newly loaded data (no restart of the app needed)
+    for (id in c("genects", "paths", "geneset", "neighbours", "volcanopval", "meandiffpval", "plsdabutt")) {
+      output[[id]] <- renderUI(NULL)
+    }
+    for (id in c("genehist", "geneqq", "genedense", "genemeanvar", "geneumap", "genevolcano",
+                 "genemd", "genepath", "geneplsda")) {
+      output[[id]] <- renderPlot(NULL)
+    }
+    for (id in c("genetables", "volctop", "mdtop", "genepathdata")) {
+      output[[id]] <- renderDataTable(NULL)
+    }
+    for (id in c("umaperr", "patherror")) {
+      output[[id]] <- renderText(NULL)
+    }
+    for (id in c("geneexpsave", "histsave", "qqplotsave", "volplotsave", "voltabsave", "mdplotsave",
+                 "mdtabsave", "disave", "umapsave", "mvsave", "pathplotsave", "pathtabsave", "plsdasave")) {
+      output[[id]] <- downloadHandler(
+        filename = "No_Results.txt",
+        content = function(file) writeLines("No results yet: run this analysis for the loaded dataset first.", file))
+    }
+    
     output$meta <- renderUI({
       fluidPage(selectInput("meta", 
                             label = "Please Select Classification Variable for Analysis", 
@@ -326,6 +417,11 @@ server <- function(input, output, session) {
     })  
     
     output$geneset <- renderUI({
+      if (!java_available) {
+        return(p(strong("Pathway analysis is unavailable because Java was not found."),
+                 "pathfindR needs Java 8 or newer, installed and on the PATH used by R",
+                 "(check with Sys.which('java') in R). Install Java, restart R and reload the app."))
+      }
       sets <- c("KEGG", "Reactome", "BioCarta", "GO-All", "GO-BP", "GO-CC", "GO-MF", "cell_markers", "mmu_KEGG")
       fluidPage(selectInput("set", 
                   label = "Select Database for Gene Search", 
@@ -335,17 +431,17 @@ server <- function(input, output, session) {
 
     
     output$neighbours <- renderUI({
-      fluidPage(numericInput("nneighs", label="Number of neighbours for UMAP analysis", 3, min=3, max=40, step=1),
+      fluidPage(numericInput("nneighs", label="Number of neighbours for UMAP analysis", 15, min=3, max=40, step=1),
                 actionButton(inputId="neighs_button", label="Run UMAP Analysis"))
     })
     
     output$volcanopval <- renderUI({
-      fluidPage(numericInput("volpval", label="Choose Significance Threshold", 0.001, min=0.001, max=1, step=0.0005),
+      fluidPage(numericInput("volpval", label="Choose False Discovery Rate (FDR) Threshold", 0.05, min=0, max=1, step=0.005),
                 actionButton(inputId="vol_button", label="Generate Volcano Plots"))
     })
     
     output$meandiffpval <- renderUI({
-      fluidPage(numericInput("mdpval", label="Choose Significance Threshold", 0.001, min=0.001, max=1, step=0.0005),
+      fluidPage(numericInput("mdpval", label="Choose False Discovery Rate (FDR) Threshold", 0.05, min=0, max=1, step=0.005),
                 actionButton(inputId="md_button", label="Generate Mean Difference Plots"))
     })
     
@@ -581,9 +677,46 @@ server <- function(input, output, session) {
   })  
   })
 
-
+  about_text <- reactive({
+    info <- geo_info()
+    txt <- c(paste("GEO Accession Data Analysis app, version", app_version),
+             paste("Report created:", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")))
+    if (!is.null(info)) {
+      last_update <- tryCatch(
+        max(as.character(pluck(GSE(), paste0(info$accession, "_series_matrix.txt.gz"))@phenoData@data$last_update_date)),
+        error = function(e) "unknown")
+      txt <- c(txt, "",
+               paste("GEO accession:", info$accession),
+               paste("Data downloaded from GEO:", info$loaded),
+               paste("Most recent sample update date in GEO:", last_update),
+               paste("Classification variable:", if (is.null(input$meta)) "not chosen" else input$meta),
+               paste("Volcano plot FDR threshold:", if (is.null(input$volpval)) "not set" else input$volpval),
+               paste("Mean difference plot FDR threshold:", if (is.null(input$mdpval)) "not set" else input$mdpval),
+               paste("UMAP neighbours:", if (is.null(input$nneighs)) "not set" else input$nneighs),
+               paste("Pathway database:", if (is.null(input$set)) "not set" else input$set))
+    }
+    c(txt, "",
+      "Methods: limma (lmFit, contrasts.fit, eBayes with proportion = 0.01, topTable with Benjamini-Hochberg",
+      "adjustment), following the GEO2R script; pathfindR for pathway enrichment; ropls for PLS-DA.",
+      paste("Java available for pathfindR:", java_available),
+      "", "Software versions:", capture.output(sessionInfo()))
+  })
+  
+  output$about <- renderText({
+    paste(about_text(), collapse = "\n")
+  })
+  
+  output$aboutsave <- downloadHandler(
+    filename = function() {
+      paste0("Analysis_Details_", if (nzchar(input$geoacc)) input$geoacc else "no_dataset", ".txt")
+    },
+    content = function(file) {
+      writeLines(about_text(), file)
+    }
+  )
   
 }
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+
