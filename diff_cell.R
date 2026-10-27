@@ -16,12 +16,12 @@ diff_cell <- function(GSEpheno){
       for (i in 1:ncol(GSEpheno.nodiff.frame)){
         GSEpheno.nodiff.new[,i] <- separate(GSEpheno.nodiff.frame,i,into=c(NA,"number"),sep=": ") %>% pull(number)
       }
-    GSEpheno.test <- GSEpheno %>% select(-c(all_of(useless_cols), contains("characteristics_ch"), contains("contact"), contains("_ch1") , contains("diff cell count:ch1")))
+    GSEpheno.test <- GSEpheno %>% select(-c(any_of(useless_cols), contains("characteristics_ch"), contains("contact"), contains("_ch1") , contains("diff cell count:ch1")))
     GSEnodiffclean <- bind_cols(GSEpheno.nodiff.new, GSEpheno.test)
     colnames(GSEnodiffclean) <- sub(":.*", "", colnames(GSEnodiffclean)) 
     GSEpheno.clean <- GSEnodiffclean %>% mutate_if(~all(str_detect(.,"^[0-9]+[\\.]?[0-9]*$")==TRUE),~as.numeric(.))
   } else {
-    GSEpheno.clean <- GSEpheno %>% select(-c(all_of(useless_cols), contains("characteristics_ch"), contains("contact"), contains("_ch1")))
+    GSEpheno.clean <- GSEpheno %>% select(-c(any_of(useless_cols), contains("characteristics_ch"), contains("contact"), contains("_ch1")))
     colnames(GSEpheno.clean) <- sub(":.*", "", colnames(GSEpheno.clean))
     GSEpheno.clean <- GSEpheno.clean %>% mutate_if(~all(str_detect(.,"^[0-9]+[\\.]?[0-9]*$")==TRUE),~as.numeric(.))
   }
@@ -36,13 +36,18 @@ diff_cell <- function(GSEpheno){
 top_gene_exp <- function(GSEpheno.clean, GSE.t.assay, GSEassay, meta){
   
   GSEdata <- bind_cols(GSEpheno.clean, GSE.t.assay)
-  GSEassay <- log10(GSEassay + 1 - min(GSEassay))
-  any(is.na(GSEassay))
+  # log2-transform only data that are not already log-scaled (same auto-detect rule as GEO2R)
+  qx <- as.numeric(quantile(as.matrix(GSEassay), c(0, 0.25, 0.5, 0.75, 0.99, 1), na.rm = TRUE))
+  if ((qx[5] > 100) || (qx[6] - qx[1] > 50 && qx[2] > 0)) {
+    GSEassay <- as.matrix(GSEassay)
+    GSEassay[which(GSEassay <= 0)] <- NaN
+    GSEassay <- log2(GSEassay)
+  }
   
   
   gs <- factor(pull(GSEpheno.clean, meta))
-  groups <- make.names(unique(factor(pull(GSEpheno.clean, meta))))
-  levels(gs) <- groups
+  levels(gs) <- make.names(levels(gs), unique = TRUE)  # rename levels in place so labels stay with their samples
+  groups <- levels(gs)
   GSE.t.assay$group <- gs 
   design <- model.matrix(~group + 0, GSE.t.assay)
   colnames(design) <- levels(gs)
@@ -147,7 +152,7 @@ gene_volcano <- function(cts, tT.logfc, volpval){
         mutate(diffexpressed = case_when(logFC > 0 & adj.P.Val < volpval ~ "UP",
                                          logFC < 0 & adj.P.Val < volpval ~ "DOWN",
                                          TRUE ~ "NO"))
-      p[[i]] <- ggplot(data=tT.logfc[[i]], aes(x=logFC, y=-log10(adj.P.Val), col=diffexpressed)) + 
+      p[[i]] <- ggplot(data=tT.logfc[[i]], aes(x=logFC, y=-log10(P.Value), col=diffexpressed)) + 
         geom_point() + 
         theme_minimal() +
         ggtitle(paste(cts[i])) + 
@@ -305,7 +310,7 @@ gene_paths <- function(tT.logfc, tT, set){
   if (is.null(tT)){
     tT.row <- rownames_to_column(tT.logfc, "Gene.symbol")
     input_df <- tT.row[,c('Gene.symbol','adj.P.Val')]
-    output_df <- tryCatch({run_pathfindR(input_df, p_val_threshold = 0.05, gene_sets=set, plot_enrichment_chart=FALSE)}, 
+    output_df <- tryCatch({pathfindR::run_pathfindR(input_df, p_val_threshold = 0.05, gene_sets=set, plot_enrichment_chart=FALSE, output_dir = tempfile("pathfindR_"))}, 
                           error= function(cond) {
         message("Here's the original error message:")
         #message(cond)
@@ -318,7 +323,7 @@ gene_paths <- function(tT.logfc, tT, set){
   } else {
     tT.row <- rownames_to_column(tT, "Gene.symbol")
     input_df <- tT.row[,c('Gene.symbol','adj.P.Val')]
-    output_df <- tryCatch({run_pathfindR(input_df, p_val_threshold = 0.05, gene_sets=set, plot_enrichment_chart=FALSE)}, 
+    output_df <- tryCatch({pathfindR::run_pathfindR(input_df, p_val_threshold = 0.05, gene_sets=set, plot_enrichment_chart=FALSE, output_dir = tempfile("pathfindR_"))}, 
                           error= function(cond) {
       message("Here's the original error message:")
       #message(cond)
@@ -340,7 +345,7 @@ gene_paths <- function(tT.logfc, tT, set){
 library(ropls)
 
 gene_paths_plot <- function(output_df, nterms){
-    enrichment_chart(result_df = output_df, top_terms = nterms)
+    pathfindR::enrichment_chart(result_df = output_df, top_terms = nterms)
 }
 
 
@@ -360,6 +365,16 @@ gene_plsda_plot <- function(sacPlsda){
   plot(sacPlsda)    
   }
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
