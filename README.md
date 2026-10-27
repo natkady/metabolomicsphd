@@ -33,14 +33,6 @@ Foetal_or_Maternal_Expl_Data_Analysis.R
 
 Inf_Sex_Expl_Data_Analysis.R
 
-Top_5_Q2_R2X_R2Y_EDA.R
-
-Top_5_Q2_R2X_EDA.R
-
-Top_5_Q2_R2Y_EDA.R
-
-top5_inter_intra_an.R
-
 Mummichog_Pre_Transform_Data.R
 
 Mummichog_Prep_Sep_Comparisons.R
