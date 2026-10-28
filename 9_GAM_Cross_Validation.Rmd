@@ -1,0 +1,2602 @@
+---
+title: "GAM CV"
+output: html_document
+date: "2026-03-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "I:\\Science\\MS\\users\\students\\Dygas_Natalia\\Documents\\PhD files\\Kim\\UPBEAT\\Data Files")
+```
+
+# Library read-in
+```{r}
+library(plyr)
+library(tidyverse)
+library(readr)
+library(grid)
+library(stats)
+library(rstatix)
+library(readxl)
+```
+
+We want to create functions to impute for the 4 GAMs simulated.
+
+```{r}
+GAM1 <- function(df1){
+  mgcv::gam(child_adip_over=="Yes" ~ s(value), data=df1, family=binomial)
+}
+
+GAM2 <- function(df1){
+  mgcv::gam(child_adip_over=="Yes" ~ s(value) + gdm + child_sex, data=df1, family=binomial)
+}
+
+GAM3 <- function(df1){
+  mgcv::gam(child_adip_over=="Yes" ~ s(value) + child_sex, data=df1, family=binomial)
+}
+
+GAM4 <- function(df1){
+  mgcv::gam(child_adip_over=="Yes" ~ gdm + s(value, by = gdm), data = df1, family = binomial)
+}
+```
+
+We will start with individual visit data, performing cross validation on the models at each visit.
+
+
+
+```{r}
+requiredPackages <- c("here", "rstudioapi",
+    "stringr", "RColorBrewer", "ggplot2",
+    "dplyr", "tidyverse", "R.utils", "ggpubr",
+    "hrbrthemes", "fields", "maps", "raster",
+    "scam", "plotmo", "pkgbuild", "dismo",
+    "SDMTools")
+
+install_load_function <- function(pkg) {
+    new.pkg <- pkg[!(pkg %in% installed.packages()[,
+        "Package"])]
+    if (length(new.pkg))
+        install.packages(new.pkg, dependencies = TRUE)
+    sapply(pkg, require, character.only = TRUE)
+}
+
+install_load_function(requiredPackages)
+```
+```{r}
+find_rtools()
+
+install.packages('remotes')
+remotes::install_version('SDMTools', version = '1.1-221.2')
+
+library(SDMTools)
+```
+
+```{r}
+df_long_v1 %>%
+  mutate(child_adip_over=factor(child_adip_over,levels=c("Yes","No"),labels=c(1,0))) -> df_long_v1
+df_long_v3 %>%
+  mutate(child_adip_over=factor(child_adip_over,levels=c("Yes","No"),labels=c(1,0))) -> df_long_v3
+df_long_v5 %>%
+  mutate(child_adip_over=factor(child_adip_over,levels=c("Yes","No"),labels=c(1,0))) -> df_long_v5
+df_long_v13 %>%
+  mutate(child_adip_over=factor(child_adip_over,levels=c("Yes","No"),labels=c(1,0))) -> df_long_v13
+df_long_v15 %>%
+  mutate(child_adip_over=factor(child_adip_over,levels=c("Yes","No"),labels=c(1,0))) -> df_long_v15
+df_long_v35 %>%
+  mutate(child_adip_over=factor(child_adip_over,levels=c("Yes","No"),labels=c(1,0))) -> df_long_v35
+```
+
+
+# Visit 1
+## GAM1
+
+```{r}
+G1V1 <- GAM1(df_long_v1)
+```
+
+
+```{r}
+G1V1data <- G1V1$model
+
+# Predict
+scgam.predG1V1 <- predict(G1V1,
+    type = "response")
+
+# Add the prediction to the data object
+G1V1data$scgam.predG1V1 <- as.vector(scgam.predG1V1)
+head(G1V1data)
+
+# Optimizing the threshold probability
+obs <- df_long_v1$child_adip_over
+predSCGAM_P <- G1V1data$scgam.predG1V1
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G1V1data, k, by = G1V1data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G1V1)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G1V1$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v1[groups != j, ]
+
+# Model fit
+G1V1.sp.j <- mgcv::gam(child_adip_over ~ s(value),
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v1[groups == j, ]
+
+    G1V1.sp.j.pred <- predict(G1V1.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G1V1.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- p_validation$child_adip_over
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM2
+```{r}
+G2V1 <- GAM2(df_long_v1)
+```
+
+
+```{r}
+G2V1data <- G2V1$model
+
+# Predict
+scgam.predG2V1 <- predict(G2V1, type="response")
+
+# Add the prediction to the data object
+G2V1data$scgam.predG2V1 <- as.vector(scgam.predG2V1)
+head(G2V1data)
+
+# Optimizing the threshold probability
+obs <- df_long_v1$child_adip_over
+predSCGAM_P <- G2V1data$scgam.predG2V1
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G2V1data, k, by = G2V1data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G2V1)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G2V1$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v1[groups != j, ]
+
+# Model fit
+G2V1.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v1[groups == j, ]
+
+    G2V1.sp.j.pred <- predict(G2V1.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G2V1.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM3
+
+```{r}
+G3V1 <- GAM3(df_long_v1)
+```
+
+
+```{r}
+G3V1data <- G3V1$model
+
+# Predict
+scgam.predG3V1 <- predict(G3V1, type="response")
+
+# Add the prediction to the data object
+G3V1data$scgam.predG3V1 <- as.vector(scgam.predG3V1)
+head(G3V1data)
+
+# Optimizing the threshold probability
+obs <- df_long_v1$child_adip_over
+predSCGAM_P <- G3V1data$scgam.predG3V1
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G3V1data, k, by = G3V1data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G3V1)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G3V1$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v1[groups != j, ]
+
+# Model fit
+G3V1.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v1[groups == j, ]
+
+    G3V1.sp.j.pred <- predict(G3V1.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G3V1.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM4
+
+```{r}
+G4V1 <- GAM4(df_long_v1)
+```
+
+
+```{r}
+G4V1data <- G4V1$model
+
+# Predict
+scgam.predG4V1 <- predict(G4V1, type="response")
+
+# Add the prediction to the data object
+G4V1data$scgam.predG4V1 <- as.vector(scgam.predG4V1)
+head(G4V1data)
+
+# Optimizing the threshold probability
+obs <- df_long_v1$child_adip_over
+predSCGAM_P <- G4V1data$scgam.predG4V1
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G4V1data, k, by = G4V1data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G4V1)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G4V1$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v1[groups != j, ]
+
+# Model fit
+G4V1.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v1[groups == j, ]
+
+    G4V1.sp.j.pred <- predict(G4V1.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G4V1.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+# Visit 3
+## GAM1
+
+```{r}
+G1V3 <- GAM1(df_long_v3)
+```
+
+
+```{r}
+G1V3data <- G1V3$model
+
+# Predict
+scgam.predG1V3 <- predict(G1V3,
+    type = "response")
+
+# Add the prediction to the data object
+G1V3data$scgam.predG1V3 <- as.vector(scgam.predG1V3)
+head(G1V3data)
+
+# Optimizing the threshold probability
+obs <- df_long_v3$child_adip_over
+predSCGAM_P <- G1V3data$scgam.predG1V3
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G1V3data, k, by = G1V3data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G1V3)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G1V3$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v3[groups != j, ]
+
+# Model fit
+G1V3.sp.j <- mgcv::gam(child_adip_over ~ s(value),
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v3[groups == j, ]
+
+    G1V3.sp.j.pred <- predict(G1V3.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G1V3.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- p_validation$child_adip_over
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM2
+
+```{r}
+G2V3 <- GAM2(df_long_v3)
+```
+
+
+```{r}
+G2V3data <- G2V3$model
+
+# Predict
+scgam.predG2V3 <- predict(G2V3, type="response")
+
+# Add the prediction to the data object
+G2V3data$scgam.predG2V3 <- as.vector(scgam.predG2V3)
+head(G2V3data)
+
+# Optimizing the threshold probability
+obs <- df_long_v3$child_adip_over
+predSCGAM_P <- G2V3data$scgam.predG2V3
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G2V3data, k, by = G2V3data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G2V3)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G2V3$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v3[groups != j, ]
+
+# Model fit
+G2V3.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v3[groups == j, ]
+
+    G2V3.sp.j.pred <- predict(G2V3.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G2V3.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM3
+
+```{r}
+G3V3 <- GAM3(df_long_v3)
+```
+
+
+```{r}
+G3V3data <- G3V3$model
+
+# Predict
+scgam.predG3V3 <- predict(G3V3, type="response")
+
+# Add the prediction to the data object
+G3V3data$scgam.predG3V3 <- as.vector(scgam.predG3V3)
+head(G3V3data)
+
+# Optimizing the threshold probability
+obs <- df_long_v3$child_adip_over
+predSCGAM_P <- G3V3data$scgam.predG3V3
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G3V3data, k, by = G3V3data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G3V3)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G3V3$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v3[groups != j, ]
+
+# Model fit
+G3V3.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v3[groups == j, ]
+
+    G3V3.sp.j.pred <- predict(G3V3.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G3V3.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM4
+
+```{r}
+G4V3 <- GAM4(df_long_v3)
+```
+
+
+```{r}
+G4V3data <- G4V3$model
+
+# Predict
+scgam.predG4V3 <- predict(G4V3, type="response")
+
+# Add the prediction to the data object
+G4V3data$scgam.predG4V3 <- as.vector(scgam.predG4V3)
+head(G4V3data)
+
+# Optimizing the threshold probability
+obs <- df_long_v3$child_adip_over
+predSCGAM_P <- G4V3data$scgam.predG4V3
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G4V3data, k, by = G4V3data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G4V3)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G4V3$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v3[groups != j, ]
+
+# Model fit
+G4V3.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v3[groups == j, ]
+
+    G4V3.sp.j.pred <- predict(G4V3.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G4V3.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+# Visit 5
+## GAM1
+
+```{r}
+G1V5 <- GAM1(df_long_v5)
+```
+
+
+```{r}
+G1V5data <- G1V5$model
+
+# Predict
+scgam.predG1V5 <- predict(G1V5,
+    type = "response")
+
+# Add the prediction to the data object
+G1V5data$scgam.predG1V5 <- as.vector(scgam.predG1V5)
+head(G1V5data)
+
+# Optimizing the threshold probability
+obs <- df_long_v5$child_adip_over
+predSCGAM_P <- G1V5data$scgam.predG1V5
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G1V5data, k, by = G1V5data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G1V5)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G1V5$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v5[groups != j, ]
+
+# Model fit
+G1V5.sp.j <- mgcv::gam(child_adip_over ~ s(value),
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v5[groups == j, ]
+
+    G1V5.sp.j.pred <- predict(G1V5.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G1V5.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- p_validation$child_adip_over
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM2
+
+```{r}
+G2V5 <- GAM2(df_long_v5)
+```
+
+
+```{r}
+G2V5data <- G2V5$model
+
+# Predict
+scgam.predG2V5 <- predict(G2V5, type="response")
+
+# Add the prediction to the data object
+G2V5data$scgam.predG2V5 <- as.vector(scgam.predG2V5)
+head(G2V5data)
+
+# Optimizing the threshold probability
+obs <- df_long_v5$child_adip_over
+predSCGAM_P <- G2V5data$scgam.predG2V5
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G2V5data, k, by = G2V5data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G2V5)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G2V5$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v5[groups != j, ]
+
+# Model fit
+G2V5.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v5[groups == j, ]
+
+    G2V5.sp.j.pred <- predict(G2V5.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G2V5.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM3
+
+```{r}
+G3V5 <- GAM3(df_long_v5)
+```
+
+
+```{r}
+G3V5data <- G3V5$model
+
+# Predict
+scgam.predG3V5 <- predict(G3V5, type="response")
+
+# Add the prediction to the data object
+G3V5data$scgam.predG3V5 <- as.vector(scgam.predG3V5)
+head(G3V5data)
+
+# Optimizing the threshold probability
+obs <- df_long_v5$child_adip_over
+predSCGAM_P <- G3V5data$scgam.predG3V5
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G3V5data, k, by = G3V5data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G3V5)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G3V5$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v5[groups != j, ]
+
+# Model fit
+G3V5.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v5[groups == j, ]
+
+    G3V5.sp.j.pred <- predict(G3V5.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G3V5.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM4
+
+```{r}
+G4V5 <- GAM4(df_long_v5)
+```
+
+
+```{r}
+G4V5data <- G4V5$model
+
+# Predict
+scgam.predG4V5 <- predict(G4V5, type="response")
+
+# Add the prediction to the data object
+G4V5data$scgam.predG4V5 <- as.vector(scgam.predG4V5)
+head(G4V5data)
+
+# Optimizing the threshold probability
+obs <- df_long_v5$child_adip_over
+predSCGAM_P <- G4V5data$scgam.predG4V5
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G4V5data, k, by = G4V5data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G4V5)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G4V5$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v5[groups != j, ]
+
+# Model fit
+G4V5.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v5[groups == j, ]
+
+    G4V5.sp.j.pred <- predict(G4V5.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G4V5.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+#ROC13
+## GAM1
+
+```{r}
+G1V13 <- GAM1(df_long_v13)
+```
+
+
+```{r}
+G1V13data <- G1V13$model
+
+# Predict
+scgam.predG1V13 <- predict(G1V13,
+    type = "response")
+
+# Add the prediction to the data object
+G1V13data$scgam.predG1V13 <- as.vector(scgam.predG1V13)
+head(G1V13data)
+
+# Optimizing the threshold probability
+obs <- df_long_v13$child_adip_over
+predSCGAM_P <- G1V13data$scgam.predG1V13
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G1V13data, k, by = G1V13data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G1V13)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G1V13$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v13[groups != j, ]
+
+# Model fit
+G1V13.sp.j <- mgcv::gam(child_adip_over ~ s(value),
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v13[groups == j, ]
+
+    G1V13.sp.j.pred <- predict(G1V13.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G1V13.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- p_validation$child_adip_over
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM2
+
+```{r}
+G2V13 <- GAM2(df_long_v13)
+```
+
+
+```{r}
+G2V13data <- G2V13$model
+
+# Predict
+scgam.predG2V13 <- predict(G2V13, type="response")
+
+# Add the prediction to the data object
+G2V13data$scgam.predG2V13 <- as.vector(scgam.predG2V13)
+head(G2V13data)
+
+# Optimizing the threshold probability
+obs <- df_long_v13$child_adip_over
+predSCGAM_P <- G2V13data$scgam.predG2V13
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G2V13data, k, by = G2V13data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G2V13)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G2V13$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v13[groups != j, ]
+
+# Model fit
+G2V13.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v13[groups == j, ]
+
+    G2V13.sp.j.pred <- predict(G2V13.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G2V13.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM3
+
+```{r}
+G3V13 <- GAM3(df_long_v13)
+```
+
+
+```{r}
+G3V13data <- G3V13$model
+
+# Predict
+scgam.predG3V13 <- predict(G3V13, type="response")
+
+# Add the prediction to the data object
+G3V13data$scgam.predG3V13 <- as.vector(scgam.predG3V13)
+head(G3V13data)
+
+# Optimizing the threshold probability
+obs <- df_long_v13$child_adip_over
+predSCGAM_P <- G3V13data$scgam.predG3V13
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G3V13data, k, by = G3V13data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G3V13)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G3V13$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v13[groups != j, ]
+
+# Model fit
+G3V13.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v13[groups == j, ]
+
+    G3V13.sp.j.pred <- predict(G3V13.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G3V13.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM4
+
+```{r}
+G4V13 <- GAM4(df_long_v13)
+```
+
+
+```{r}
+G4V13data <- G4V13$model
+
+# Predict
+scgam.predG4V13 <- predict(G4V13, type="response")
+
+# Add the prediction to the data object
+G4V13data$scgam.predG4V13 <- as.vector(scgam.predG4V13)
+head(G4V13data)
+
+# Optimizing the threshold probability
+obs <- df_long_v13$child_adip_over
+predSCGAM_P <- G4V13data$scgam.predG4V13
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G4V13data, k, by = G4V13data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G4V13)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G4V13$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v13[groups != j, ]
+
+# Model fit
+G4V13.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v13[groups == j, ]
+
+    G4V13.sp.j.pred <- predict(G4V13.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G4V13.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+# ROC15
+## GAM1
+
+```{r}
+G1V15 <- GAM1(df_long_v15)
+```
+
+
+```{r}
+G1V15data <- G1V15$model
+
+# Predict
+scgam.predG1V15 <- predict(G1V15,
+    type = "response")
+
+# Add the prediction to the data object
+G1V15data$scgam.predG1V15 <- as.vector(scgam.predG1V15)
+head(G1V15data)
+
+# Optimizing the threshold probability
+obs <- df_long_v15$child_adip_over
+predSCGAM_P <- G1V15data$scgam.predG1V15
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G1V15data, k, by = G1V15data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G1V15)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G1V15$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v15[groups != j, ]
+
+# Model fit
+G1V15.sp.j <- mgcv::gam(child_adip_over ~ s(value),
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v15[groups == j, ]
+
+    G1V15.sp.j.pred <- predict(G1V15.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G1V15.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- p_validation$child_adip_over
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM2
+
+```{r}
+G2V15 <- GAM2(df_long_v15)
+```
+
+
+```{r}
+G2V15data <- G2V15$model
+
+# Predict
+scgam.predG2V15 <- predict(G2V15, type="response")
+
+# Add the prediction to the data object
+G2V15data$scgam.predG2V15 <- as.vector(scgam.predG2V15)
+head(G2V15data)
+
+# Optimizing the threshold probability
+obs <- df_long_v15$child_adip_over
+predSCGAM_P <- G2V15data$scgam.predG2V15
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G2V15data, k, by = G2V15data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G2V15)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G2V15$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v15[groups != j, ]
+
+# Model fit
+G2V15.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v15[groups == j, ]
+
+    G2V15.sp.j.pred <- predict(G2V15.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G2V15.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM3
+
+```{r}
+G3V15 <- GAM3(df_long_v15)
+```
+
+
+```{r}
+G3V15data <- G3V15$model
+
+# Predict
+scgam.predG3V15 <- predict(G3V15, type="response")
+
+# Add the prediction to the data object
+G3V15data$scgam.predG3V15 <- as.vector(scgam.predG3V15)
+head(G3V15data)
+
+# Optimizing the threshold probability
+obs <- df_long_v15$child_adip_over
+predSCGAM_P <- G3V15data$scgam.predG3V15
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G3V15data, k, by = G3V15data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G3V15)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G3V15$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v15[groups != j, ]
+
+# Model fit
+G3V15.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v15[groups == j, ]
+
+    G3V15.sp.j.pred <- predict(G3V15.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G3V15.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM4
+
+```{r}
+G4V15 <- GAM4(df_long_v15)
+```
+
+
+```{r}
+G4V15data <- G4V15$model
+
+# Predict
+scgam.predG4V15 <- predict(G4V15, type="response")
+
+# Add the prediction to the data object
+G4V15data$scgam.predG4V15 <- as.vector(scgam.predG4V15)
+head(G4V15data)
+
+# Optimizing the threshold probability
+obs <- df_long_v15$child_adip_over
+predSCGAM_P <- G4V15data$scgam.predG4V15
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G4V15data, k, by = G4V15data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G4V15)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G4V15$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v15[groups != j, ]
+
+# Model fit
+G4V15.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v15[groups == j, ]
+
+    G4V15.sp.j.pred <- predict(G4V15.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G4V15.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+# ROC35
+## GAM1
+
+```{r}
+G1V35 <- GAM1(df_long_v35)
+```
+
+
+```{r}
+G1V35data <- G1V35$model
+
+# Predict
+scgam.predG1V35 <- predict(G1V35,
+    type = "response")
+
+# Add the prediction to the data object
+G1V35data$scgam.predG1V35 <- as.vector(scgam.predG1V35)
+head(G1V35data)
+
+# Optimizing the threshold probability
+obs <- df_long_v35$child_adip_over
+predSCGAM_P <- G1V35data$scgam.predG1V35
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G1V35data, k, by = G1V35data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G1V35)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G1V35$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v35[groups != j, ]
+
+# Model fit
+G1V35.sp.j <- mgcv::gam(child_adip_over ~ s(value),
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v35[groups == j, ]
+
+    G1V35.sp.j.pred <- predict(G1V35.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G1V35.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- p_validation$child_adip_over
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM2
+
+```{r}
+G2V35 <- GAM2(df_long_v35)
+```
+
+
+```{r}
+G2V35data <- G2V35$model
+
+# Predict
+scgam.predG2V35 <- predict(G2V35, type="response")
+
+# Add the prediction to the data object
+G2V35data$scgam.predG2V35 <- as.vector(scgam.predG2V35)
+head(G2V35data)
+
+# Optimizing the threshold probability
+obs <- df_long_v35$child_adip_over
+predSCGAM_P <- G2V35data$scgam.predG2V35
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G2V35data, k, by = G2V35data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G2V35)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G2V35$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v35[groups != j, ]
+
+# Model fit
+G2V35.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v35[groups == j, ]
+
+    G2V35.sp.j.pred <- predict(G2V35.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G2V35.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM3
+
+```{r}
+G3V35 <- GAM3(df_long_v35)
+```
+
+
+```{r}
+G3V35data <- G3V35$model
+
+# Predict
+scgam.predG3V35 <- predict(G3V35, type="response")
+
+# Add the prediction to the data object
+G3V35data$scgam.predG3V35 <- as.vector(scgam.predG3V35)
+head(G3V35data)
+
+# Optimizing the threshold probability
+obs <- df_long_v35$child_adip_over
+predSCGAM_P <- G3V35data$scgam.predG3V35
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G3V35data, k, by = G3V35data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G3V35)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G3V35$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v35[groups != j, ]
+
+# Model fit
+G3V35.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v35[groups == j, ]
+
+    G3V35.sp.j.pred <- predict(G3V35.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G3V35.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+##GAM4
+
+```{r}
+G4V35 <- GAM4(df_long_v35)
+```
+
+
+```{r}
+G4V35data <- G4V35$model
+
+# Predict
+scgam.predG4V35 <- predict(G4V35, type="response")
+
+# Add the prediction to the data object
+G4V35data$scgam.predG4V35 <- as.vector(scgam.predG4V35)
+head(G4V35data)
+
+# Optimizing the threshold probability
+obs <- df_long_v35$child_adip_over
+predSCGAM_P <- G4V35data$scgam.predG4V35
+
+# Threshold optimizing
+
+
+roc_obj <- pROC::roc(obs~predSCGAM_P)
+ 
+# Threshold that maximizes sensitivity + specificity
+best <- pROC::coords(
+    roc_obj,
+    x = "best",
+    best.method = "youden",
+    ret = c("threshold", "sensitivity", "specificity", "youden"),
+    transpose = FALSE
+)
+
+if (nrow(best)==1){myThreshold=best$threshold} else {myThreshold <- 0.5}
+
+# Accuracy values with all observations
+accuracy(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+# Create confusion matrix with all
+# observations
+confusion.matrix(2-as.numeric(obs), predSCGAM_P, threshold = myThreshold)
+
+```
+
+```{r}
+# kfold cross validation
+# Number of groups
+k <- 5
+
+# Generate groups
+groups <- kfold(G4V35data, k, by = G4V35data$`child_adip_over == "Yes"`)
+# Initialise the confusion matrix and
+# the accuracy table:
+myCM <- NULL
+myACC <- NULL
+
+# Get the formula of the selected model
+formula <- summary(G4V35)[["formula"]]
+
+# Get the smoothing parameters of the
+# selected model
+sp <- G4V35$sp
+
+
+# Loop for each group k
+for (j in 1:k) {
+    # Preparation of Training Sites
+    p_train <- df_long_v35[groups != j, ]
+
+# Model fit
+G4V35.sp.j <- mgcv::gam(formula,
+                       family = binomial(link = "logit"),
+                       data = p_train, sp = c(sp))
+
+# Predict Model
+    p_validation <- df_long_v35[groups == j, ]
+
+    G4V35.sp.j.pred <- predict(G4V35.sp.j,
+        newdata = p_validation, type = "response")
+    p_validation$Pred <- G4V35.sp.j.pred
+
+# Confusion matrix and accuracy
+# table for fold j
+    obs <- as.factor(p_validation$child_adip_over)
+    predSCGAM <- p_validation$Pred
+    myCM <- rbind(myCM, as.numeric(confusion.matrix(2-as.numeric(obs),
+        predSCGAM, threshold = myThreshold)))
+    myACC <- rbind(myACC, accuracy(2-as.numeric(obs), predSCGAM,
+        threshold = myThreshold))
+}
+
+# Mean values across k-folds
+validation_summary <- cbind(Threshold = myThreshold,
+    mean_AUC = mean(myACC$AUC), mean_Omission = mean(myACC$omission.rate),
+    mean_sensitivity = mean(myACC$sensitivity),
+    mean_specificity = mean(myACC$specificity),
+    mean_Prop.Corr = mean(myACC$prop.correct))
+```
+
+```{r}
+validation_summary
+```
+
+```{r}
+save.image(file='GAM_CV_ENVIR.RData')
+```
+
+
