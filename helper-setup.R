@@ -11,7 +11,7 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
-app_dir <- normalizePath(file.path("..", ".."))
+app_dir <-"[directory pathway where GEO files have been saved eg. C:/Users/natkady]"
 source(file.path(app_dir, "diff_cell.R"))
 
 # A small simulated GEO series with known answers: 200 genes x 12 samples on the log2 scale.
