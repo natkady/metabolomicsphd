@@ -85,8 +85,21 @@ diff_cell.R.
 
 The main code for the app is within geo_analysis.R, with diff_cell.R containing the functions needed to produce analyses and graphs within geo_analysis.R. 
 
-For testing of the GEO accession data analysis app, please use the files: test-analysis-functions.R, test-app.R and test-validation-geo2r.R
+For testing of the GEO accession data analysis app, please use the files: helper-setup.R, test-analysis-functions.R, test-app.R and test-validation-geo2r.R
 
-For help with set up, please see helper=setup.R.
+To run the RShiny app, please download the files diff_cell.R and geo_analysis.R and save them in the same folder on your machine. To run the app, open the geo_analysis.R file in RStudio and click 'Run App'. Steps to running the code file can also been seen at the start of the geo_analysis.R file. The file diff_cell.R is required to be in the same folder as the geo_analysis.R file so that the app may run its functions.
+
+To validate the app and its functions, please download helper-setup.R, test-analysis-functions.R, test-app.R and test-validation-geo2r.R and save them in the same folder as the diff_cell.R and geo_analysis.R files.
+
+To be able to validate the app and functions, you must run the helper-setup.R file first. Within the file, please state the directory where the GEO files have been saved with the “” in app_dir <- i.e.
+
+app_dir <-"[directory pathway where GEO files have been saved eg. C:/Users/natkady]"
+
+replace [directory pathway where GEO files have been saved eg. C:/Users/natkady] with the pathway to the folder. Using the example this would look like:
+
+app_dir <- “C:/Users/natkady”
+
+and save the file before running. Once it has been saved, you may run the test- files.
+
 
 
